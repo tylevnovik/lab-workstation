@@ -1,0 +1,35 @@
+# Python 虚拟环境
+.venv/
+venv/
+env/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 数据文件（如果太大不要提交）
+# data/*.csv
+# data/*.xlsx
+
+# 输出文件（可选，视情况取消注释）
+# output/*.png
+# output/*.html
+
+# 日志
+*.log
