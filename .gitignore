@@ -1,2 +1,10 @@
 .DS_Store
 *.zip
+
+# .NET 构建产物
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
