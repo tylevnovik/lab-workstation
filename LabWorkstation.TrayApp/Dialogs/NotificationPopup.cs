@@ -43,6 +43,7 @@ public sealed class NotificationPopup : Form
             ForeColor = impColor,
             Font = new Font("Microsoft YaHei UI", 12f, FontStyle.Bold),
             Location = new Point(15, 15),
+            MaximumSize = new Size(350, 0),
             AutoSize = true
         };
         Controls.Add(titleLabel);

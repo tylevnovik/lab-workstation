@@ -90,8 +90,8 @@ public class MembersTab : UserControl
         var removeBtn = NewBtn("从组中移除", 60, (_, _) => RemoveFromGroup());
         var enableBtn = NewBtn("启用账户", 100, (_, _) => ToggleUser(enable: true));
         var disableBtn = NewBtn("禁用账户", 140, (_, _) => ToggleUser(enable: false));
-        var resetPwdBtn = NewBtn("重置密码", 188, (_, _) => ResetPassword());
-        var changeGroupBtn = NewBtn("修改分组", 226, (_, _) => ChangeGroup());
+        var resetPwdBtn = NewBtn("重置密码", 180, (_, _) => ResetPassword());
+        var changeGroupBtn = NewBtn("修改分组", 220, (_, _) => ChangeGroup());
         listGroup.Controls.Add(refreshBtn);
         listGroup.Controls.Add(removeBtn);
         listGroup.Controls.Add(enableBtn);

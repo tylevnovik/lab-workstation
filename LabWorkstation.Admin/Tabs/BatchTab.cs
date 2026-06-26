@@ -22,6 +22,7 @@ public class BatchTab : UserControl
         {
             Text = "批量创建账户：每行一个，格式为 \"用户名,密码,姓名,导师\"（导师名必须匹配已有导师组）。",
             Location = new Point(20, 15),
+            MaximumSize = new Size(760, 0),
             AutoSize = true
         };
         Controls.Add(batchIntro);
@@ -31,6 +32,7 @@ public class BatchTab : UserControl
             Text = "示例：zhangsan,Pass123!,张三,张老师    （密码可省略，省略时使用右侧默认密码）",
             ForeColor = Color.Gray,
             Location = new Point(20, 38),
+            MaximumSize = new Size(760, 0),
             AutoSize = true
         };
         Controls.Add(batchExample);
@@ -87,6 +89,7 @@ public class BatchTab : UserControl
             Text = "注意：创建后建议提醒各用户首次登录后修改密码。\n导师名必须与已有导师组匹配，否则该行将被跳过。",
             ForeColor = Color.Red,
             Location = new Point(490, 135),
+            MaximumSize = new Size(280, 0),
             AutoSize = true
         };
         Controls.Add(batchNote);

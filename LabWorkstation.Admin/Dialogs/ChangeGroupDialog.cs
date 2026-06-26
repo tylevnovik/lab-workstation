@@ -23,6 +23,7 @@ public class ChangeGroupDialog : Form
         {
             Text = $"用户：{username}    当前导师组：{currentDisplay}",
             Location = new Point(15, 15),
+            MaximumSize = new Size(350, 0),
             AutoSize = true
         };
         Controls.Add(infoLabel);

@@ -90,6 +90,7 @@ public class CreateAccountTab : UserControl
             Text = $"提示：创建后，用户可访问 {LabConfig.PublicPath}（公共数据）、{LabConfig.SharePath}\\[导师名]\\（导师组数据）和 {LabConfig.UsersRootPath}\\用户名（个人目录）。",
             ForeColor = Color.Gray,
             Location = new Point(20, 220),
+            MaximumSize = new Size(710, 0),
             AutoSize = true
         };
         formGroup.Controls.Add(tipLabel);

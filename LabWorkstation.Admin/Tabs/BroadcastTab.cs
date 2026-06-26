@@ -20,8 +20,9 @@ public class BroadcastTab : UserControl
 
         var broadcastIntro = new Label
         {
-            Text = "向所有在线用户推送通知。通知保存后由用户端的 Lab-TrayApp 轮询并弹出提醒。",
+            Text = "向所有在线用户推送通知。通知保存后由用户端 Lab-TrayApp 轮询并弹出提醒。",
             Location = new Point(20, 15),
+            MaximumSize = new Size(745, 0),
             AutoSize = true
         };
         Controls.Add(broadcastIntro);
@@ -31,7 +32,7 @@ public class BroadcastTab : UserControl
         {
             Text = "编辑通知",
             Location = new Point(15, 45),
-            Size = new Size(745, 330)
+            Size = new Size(745, 310)
         };
         Controls.Add(broadcastEditGroup);
 
@@ -60,7 +61,7 @@ public class BroadcastTab : UserControl
         _bcastMsgBox = new RichTextBox
         {
             Location = new Point(15, 88),
-            Size = new Size(715, 200),
+            Size = new Size(715, 180),
             BorderStyle = BorderStyle.FixedSingle,
             Font = new Font("Microsoft YaHei UI", 9.5F)
         };
@@ -69,7 +70,7 @@ public class BroadcastTab : UserControl
         var bcastSendBtn = new Button
         {
             Text = "发送通知",
-            Location = new Point(580, 300),
+            Location = new Point(580, 280),
             Size = new Size(150, 30),
             BackColor = Color.FromArgb(0, 122, 204),
             ForeColor = Color.White,
@@ -83,24 +84,24 @@ public class BroadcastTab : UserControl
         var bcastHistoryGroup = new GroupBox
         {
             Text = "历史通知",
-            Location = new Point(15, 383),
-            Size = new Size(745, 48)
+            Location = new Point(15, 363),
+            Size = new Size(745, 65)
         };
         Controls.Add(bcastHistoryGroup);
 
         _bcastHistoryCombo = new ComboBox
         {
-            Location = new Point(15, 17),
+            Location = new Point(15, 28),
             Size = new Size(530, 25),
             DropDownStyle = ComboBoxStyle.DropDownList
         };
         bcastHistoryGroup.Controls.Add(_bcastHistoryCombo);
 
-        var bcastHistoryRefreshBtn = new Button { Text = "刷新", Location = new Point(555, 15), Size = new Size(75, 28) };
+        var bcastHistoryRefreshBtn = new Button { Text = "刷新", Location = new Point(555, 26), Size = new Size(75, 28) };
         bcastHistoryRefreshBtn.Click += (_, _) => RefreshHistory();
         bcastHistoryGroup.Controls.Add(bcastHistoryRefreshBtn);
 
-        var bcastArchiveBtn = new Button { Text = "移至历史", Location = new Point(640, 15), Size = new Size(90, 28) };
+        var bcastArchiveBtn = new Button { Text = "移至历史", Location = new Point(640, 26), Size = new Size(90, 28) };
         bcastArchiveBtn.Click += (_, _) => ArchivePending();
         bcastHistoryGroup.Controls.Add(bcastArchiveBtn);
     }

@@ -29,6 +29,7 @@ public class PerformanceTab : UserControl
         {
             Text = "解决非管理员账户桌面体验卡顿的问题。以下优化项可逐项应用，建议全部勾选后一键执行。",
             Location = new Point(20, 15),
+            MaximumSize = new Size(745, 0),
             AutoSize = true
         };
         Controls.Add(perfIntro);
@@ -37,7 +38,7 @@ public class PerformanceTab : UserControl
         {
             Text = "优化项（勾选后点击\"一键优化\"）",
             Location = new Point(15, 45),
-            Size = new Size(745, 280)
+            Size = new Size(745, 310)
         };
         Controls.Add(optGroup);
 
@@ -46,7 +47,7 @@ public class PerformanceTab : UserControl
         var optimizeBtn = new Button
         {
             Text = "一键执行优化",
-            Location = new Point(300, 340),
+            Location = new Point(300, 370),
             Size = new Size(180, 38),
             BackColor = Color.FromArgb(0, 153, 76),
             ForeColor = Color.White,
@@ -133,6 +134,7 @@ public class PerformanceTab : UserControl
         {
             Text = label,
             Location = new Point(20, y),
+            MaximumSize = new Size(610, 0),
             AutoSize = true,
             Checked = true
         };
@@ -152,6 +154,7 @@ public class PerformanceTab : UserControl
         {
             Text = "    " + desc,
             Location = new Point(40, y + 24),
+            MaximumSize = new Size(690, 0),
             AutoSize = true,
             ForeColor = Color.Gray,
             Font = new Font("Microsoft YaHei UI", 8F)

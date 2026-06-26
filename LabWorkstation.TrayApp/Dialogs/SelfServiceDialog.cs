@@ -65,7 +65,7 @@ public sealed class SelfServiceDialog : Form
         var infoPanel = new Panel
         {
             Location = new Point(20, yPos),
-            Size = new Size(440, 65),
+            Size = new Size(440, 85),
             BackColor = PanelColor
         };
 
@@ -75,6 +75,7 @@ public sealed class SelfServiceDialog : Form
             ForeColor = TextColor,
             Font = new Font("Microsoft YaHei UI", 10f),
             Location = new Point(12, 8),
+            MaximumSize = new Size(416, 0),
             AutoSize = true
         };
         infoPanel.Controls.Add(lblUser);
@@ -85,7 +86,8 @@ public sealed class SelfServiceDialog : Form
             Text = $"导师组：{groupText}",
             ForeColor = SubtleColor,
             Font = new Font("Microsoft YaHei UI", 9f),
-            Location = new Point(12, 30),
+            Location = new Point(12, 50),
+            MaximumSize = new Size(200, 0),
             AutoSize = true
         };
         infoPanel.Controls.Add(lblAdvisor);
@@ -96,13 +98,14 @@ public sealed class SelfServiceDialog : Form
             Text = $"最近登录：{lastLogon}",
             ForeColor = SubtleColor,
             Font = new Font("Microsoft YaHei UI", 9f),
-            Location = new Point(230, 8),
+            Location = new Point(220, 50),
+            MaximumSize = new Size(208, 0),
             AutoSize = true
         };
         infoPanel.Controls.Add(lblLogon);
 
         Controls.Add(infoPanel);
-        yPos += 75;
+        yPos += 95;
 
         // 修改密码区
         var secPwd = new Label
@@ -133,6 +136,7 @@ public sealed class SelfServiceDialog : Form
             Text = "",
             ForeColor = Color.FromArgb(250, 179, 135),
             Location = new Point(90, yPos),
+            MaximumSize = new Size(250, 0),
             AutoSize = true
         };
         Controls.Add(lblPwdStatus);
@@ -206,6 +210,7 @@ public sealed class SelfServiceDialog : Form
             Text = $"个人文件夹 ({personalPath})：{FolderSizer.GetSizeDisplay(Path.Combine(LabConfig.UsersRootPath, _userName))}",
             ForeColor = TextColor,
             Location = new Point(30, yPos),
+            MaximumSize = new Size(440, 0),
             AutoSize = true
         };
         Controls.Add(lblPersonalSize);
@@ -215,6 +220,7 @@ public sealed class SelfServiceDialog : Form
         {
             ForeColor = TextColor,
             Location = new Point(30, yPos),
+            MaximumSize = new Size(440, 0),
             AutoSize = true
         };
         if (!string.IsNullOrEmpty(_groupFolder) && Directory.Exists(_groupFolder))
