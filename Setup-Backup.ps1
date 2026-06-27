@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     课题组工作站 · 分级备份配置脚本
 .DESCRIPTION

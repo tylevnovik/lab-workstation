@@ -1,7 +1,12 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
+using LabWorkstation.Common.Audit;
 using LabWorkstation.Common.Configuration;
+using LabWorkstation.Common.Desktop;
 using LabWorkstation.Common.LocalAccounts;
+using LabWorkstation.Common.Security;
+using LabWorkstation.Common.Store;
 
 namespace LabWorkstation.TrayApp;
 
@@ -33,6 +38,9 @@ public sealed class TrayAppContext : ApplicationContext
 
         _poller = new NotificationPoller(_notifyIcon);
         _poller.Start();
+
+        // 启动时应用壁纸（确保用户桌面壁纸正确，非管理员也能执行）
+        ApplyWallpaperOnStartup();
 
         // 启动气泡提示
         var advisorSuffix = string.IsNullOrEmpty(_widget.AdvisorName) ? "" : $" · {_widget.AdvisorName}组";
@@ -85,6 +93,13 @@ public sealed class TrayAppContext : ApplicationContext
         mExit.ForeColor = Color.FromArgb(180, 0, 0);
         mExit.Click += (_, _) => ExitApp();
 
+        // 非管理员禁用退出
+        if (!AdminCheck.IsCurrentUserAdmin())
+        {
+            mExit.Enabled = false;
+            mExit.ToolTipText = "仅管理员可退出";
+        }
+
         return menu;
     }
 
@@ -98,6 +113,30 @@ public sealed class TrayAppContext : ApplicationContext
     {
         using var popup = new Dialogs.NoticePopup();
         popup.ShowDialog(_widget);
+    }
+
+    /// <summary>
+    /// 启动时检查并应用壁纸。非管理员也能执行 SystemParametersInfo 设置当前会话壁纸。
+    /// 如果壁纸文件存在则直接设置当前会话，确保壁纸生效。
+    /// </summary>
+    private void ApplyWallpaperOnStartup()
+    {
+        try
+        {
+            if (!File.Exists(LabConfig.WallpaperPath))
+            {
+                // 壁纸文件不存在，尝试从 Admin 部署目录复制
+                var src = Path.Combine(LabConfig.ScriptsDir, "LabWallpaper.png");
+                if (File.Exists(src))
+                    WallpaperManager.SetCurrentWallpaper(src);
+                return;
+            }
+            WallpaperManager.SetCurrentWallpaper(LabConfig.WallpaperPath);
+        }
+        catch
+        {
+            // 壁纸设置失败不影响 TrayApp 正常运行
+        }
     }
 
     private void ExitApp()

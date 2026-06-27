@@ -2,6 +2,7 @@ using System.DirectoryServices.AccountManagement;
 using System.Runtime.Versioning;
 using LabWorkstation.Common.Configuration;
 using LabWorkstation.Common.Mock;
+using LabWorkstation.Common.Store;
 
 namespace LabWorkstation.Common.LocalAccounts;
 
@@ -118,6 +119,16 @@ public static class GroupManager
 
     private static List<string> GetAllAdvisorGroupsReal()
     {
+        // 优先从 AdvisorStore 读取（权威落盘来源）
+        try
+        {
+            var fromStore = AdvisorStore.LoadAll();
+            if (fromStore.Count > 0)
+                return fromStore.Select(a => a.Name).ToList();
+        }
+        catch { /* Store 读取失败，回退到系统枚举 */ }
+
+        // 回退：枚举系统 Lab_ 开头的组
         var result = new List<string>();
         using var ctx = CreateContext();
         using var searcher = new PrincipalSearcher(new GroupPrincipal(ctx));

@@ -1,4 +1,5 @@
 using LabWorkstation.Common.Configuration;
+using LabWorkstation.Monitor.Kiosk;
 using LabWorkstation.Monitor.Metrics;
 
 namespace LabWorkstation.Monitor;
@@ -23,9 +24,13 @@ public sealed class MonitorWorker : BackgroundService
     private const int GpuThreshold = 95;            // GPU 使用率 %
     private const int LongRunningHours = 48;        // 长时进程阈值（小时）
 
+    // ── Kiosk 队列轮询 ──────────────────────────────────────
+    private const int KioskPollIntervalSeconds = 5; // Kiosk 请求轮询间隔
+
     private readonly MonitorLogger _logger;
     private readonly AlertCooldown _cooldown;
     private readonly GpuMetricCollector _gpuCollector;
+    private readonly KioskQueueProcessor _kioskProcessor;
     private int _cycleCount;
 
     public MonitorWorker(MonitorLogger logger, AlertCooldown cooldown, GpuMetricCollector gpuCollector)
@@ -33,6 +38,13 @@ public sealed class MonitorWorker : BackgroundService
         _logger = logger;
         _cooldown = cooldown;
         _gpuCollector = gpuCollector;
+
+        // Kiosk 队列处理器：日志同时输出到控制台和监控日志文件
+        _kioskProcessor = new KioskQueueProcessor(msg =>
+        {
+            Console.WriteLine(msg);
+            _logger.LogInfo(msg);
+        });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -45,7 +57,15 @@ public sealed class MonitorWorker : BackgroundService
         _logger.LogInfo($"  日志上限   : {LabConfig.MonitorLogMaxSizeBytes / (1024 * 1024)} MB → 自动轮转");
         _logger.LogInfo($"  阈值 → CPU: {CpuThreshold}% | 内存: {MemoryThreshold}% | 磁盘: {DiskThreshold}% | GPU: {GpuThreshold}%");
         _logger.LogInfo($"  长时进程   : > {LongRunningHours}h");
+        _logger.LogInfo("────────────────────────────────────────────");
+        _logger.LogInfo("Kiosk 队列处理");
+        _logger.LogInfo($"  轮询间隔   : {KioskPollIntervalSeconds}s");
+        _logger.LogInfo($"  请求目录   : {LabConfig.KioskRequestsPath}");
+        _logger.LogInfo($"  响应目录   : {LabConfig.KioskResponsesPath}");
         _logger.LogInfo("════════════════════════════════════════════");
+
+        // 启动 Kiosk 队列轮询（与资源监控并行运行，独立 5s 间隔）
+        var kioskTask = RunKioskQueueAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -145,5 +165,48 @@ public sealed class MonitorWorker : BackgroundService
                 // 服务正在停止，正常退出
             }
         }
+
+        // 等待 Kiosk 轮询任务退出
+        try
+        {
+            await kioskTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常停止
+        }
+    }
+
+    /// <summary>
+    /// Kiosk 队列轮询循环。每 <see cref="KioskPollIntervalSeconds"/> 秒检查一次请求目录，
+    /// 与主资源监控循环并行运行。单次轮询异常不中断循环。
+    /// </summary>
+    private async Task RunKioskQueueAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInfo("[Kiosk] 队列处理器已启动");
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                _kioskProcessor.ProcessPendingRequests();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"[Kiosk] 队列处理异常: {ex.Message}");
+            }
+
+            try
+            {
+                await Task.Delay(KioskPollIntervalSeconds * 1000, stoppingToken);
+            }
+            catch (TaskCanceledException)
+            {
+                // 服务正在停止，正常退出
+                break;
+            }
+        }
+
+        _logger.LogInfo("[Kiosk] 队列处理器已停止");
     }
 }

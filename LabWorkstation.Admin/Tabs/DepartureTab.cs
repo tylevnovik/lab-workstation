@@ -13,6 +13,7 @@ public class DepartureTab : UserControl
     private readonly ComboBox _departUserCombo;
     private readonly RichTextBox _departInfoBox;
     private readonly RichTextBox _departStatusBox;
+    private readonly CheckBox _deleteAccountCheck;
     private Button _departExecBtn;
 
     public DepartureTab(IAppShell shell)
@@ -96,11 +97,22 @@ public class DepartureTab : UserControl
         };
         departStatusGroup.Controls.Add(_departStatusBox);
 
+        // -- 彻底删除账户选项 --
+        _deleteAccountCheck = new CheckBox
+        {
+            Text = "归档后彻底删除账户（删除Profile+个人目录+Windows账户，删除后可用同名重建）",
+            Location = new Point(15, 378),
+            Size = new Size(745, 24),
+            ForeColor = Color.FromArgb(180, 30, 30),
+            Checked = false
+        };
+        Controls.Add(_deleteAccountCheck);
+
         // -- 执行离校按钮 --
         _departExecBtn = new Button
         {
             Text = "执行离校流程",
-            Location = new Point(300, 378),
+            Location = new Point(300, 408),
             Size = new Size(180, 38),
             BackColor = Color.FromArgb(180, 30, 30),
             ForeColor = Color.White,
@@ -194,15 +206,27 @@ public class DepartureTab : UserControl
         var advisor = GroupManager.GetUserAdvisorGroup(username);
         var advisorDisplay = string.IsNullOrEmpty(advisor) ? "(未分配)" : LabConfig.AdvisorToGroupName(advisor);
 
+        var deleteAccount = _deleteAccountCheck.Checked;
+
         var confirmMsg = $"确定要对用户 '{username}' 执行离校流程吗？\n\n" +
                          "即将执行以下操作：\n" +
-                         "1. 禁用账户（用户将无法登录）\n" +
+                         (deleteAccount ? "1. 禁用账户\n" : "1. 禁用账户（用户将无法登录）\n") +
                          $"2. 归档个人数据到 {Path.Combine(LabConfig.PublicPath, "99_归档")}\\\n";
         if (!string.IsNullOrEmpty(advisor))
             confirmMsg += $"3. 归档组内数据（{advisorDisplay}）\n";
         confirmMsg += "4. 从所有组中移除\n" +
-                      "5. 生成工作交接清单\n\n" +
-                      "此操作不可撤销，请确认。";
+                      "5. 生成工作交接清单\n";
+        if (deleteAccount)
+        {
+            confirmMsg += "6. 删除 Profile 和个人数据目录\n" +
+                          "7. 删除 Windows 账户（删除后可用同名重建）\n";
+        }
+        confirmMsg += "\n此操作不可撤销，请确认。";
+
+        if (deleteAccount)
+        {
+            confirmMsg += "\n\n注意：已勾选彻底删除，归档后将永久删除账户、Profile和个人目录，不可撤销。";
+        }
 
         if (MessageBox.Show(confirmMsg, "确认离校", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
 
@@ -217,7 +241,7 @@ public class DepartureTab : UserControl
                 _departStatusBox.ScrollToCaret();
                 Application.DoEvents();
                 _shell.Log(msg);
-            });
+            }, deleteAccount: _deleteAccountCheck.Checked);
 
             _departStatusBox.AppendText($"\n归档路径：{result.ArchiveDir}\r\n");
             _departStatusBox.ScrollToCaret();
@@ -226,8 +250,11 @@ public class DepartureTab : UserControl
 
             _departExecBtn.Enabled = true;
 
-            MessageBox.Show($"离校流程已执行完毕！\n\n用户：{username}\n归档路径：{result.ArchiveDir}\n\n请通知相关人员完成纸质交接清单签字。",
-                "离校完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var successMsg = deleteAccount
+                ? $"离校流程已执行完毕！\n\n用户：{username}\n归档路径：{result.ArchiveDir}\n\n账户、Profile 和个人数据目录已彻底删除，Windows 账户已删除（可用同名重建）。\n\n请通知相关人员完成纸质交接清单签字。"
+                : $"离校流程已执行完毕！\n\n用户：{username}\n归档路径：{result.ArchiveDir}\n\n请通知相关人员完成纸质交接清单签字。";
+
+            MessageBox.Show(successMsg, "离校完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             RefreshDepartUserCombo();
             _shell.RefreshMembers();

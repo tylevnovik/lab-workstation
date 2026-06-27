@@ -100,6 +100,18 @@ public static class AccountManager
         up.Save();
     }
 
+    /// <summary>验证用户密码是否正确。</summary>
+    public static bool VerifyPassword(string username, string password)
+    {
+        if (LabConfig.TestMode) return MockState.GetPassword(username) == password;
+        try
+        {
+            using var ctx = new PrincipalContext(ContextType.Machine);
+            return ctx.ValidateCredentials(username, password);
+        }
+        catch { return false; }
+    }
+
     /// <summary>修改自己的密码（需提供旧密码）。</summary>
     public static void ChangePassword(string username, string oldPassword, string newPassword)
     {
@@ -107,6 +119,26 @@ public static class AccountManager
         using var up = FindUser(username) ?? throw new LabOperationException("CHANGE_PASSWORD", username, $"用户 '{username}' 不存在");
         up.ChangePassword(oldPassword, newPassword);
         up.Save();
+    }
+
+    /// <summary>获取用户 SID 字符串（如 S-1-5-21-...），用户不存在则返回 null。</summary>
+    public static string? GetUserSid(string username)
+    {
+        if (LabConfig.TestMode) return MockState.GetUserSid(username);
+        using var up = FindUser(username);
+        return up?.Sid?.Value;
+    }
+
+    /// <summary>
+    /// 删除本地用户账户。删除前应先从所有组移除并清理 Profile。
+    /// 用户不存在时抛 LabOperationException。
+    /// </summary>
+    public static void DeleteUser(string username)
+    {
+        if (LabConfig.TestMode) { MockState.DeleteUser(username); return; }
+        using var up = FindUser(username)
+            ?? throw new LabOperationException("DELETE_USER", username, $"用户 '{username}' 不存在");
+        up.Delete();
     }
 
     /// <summary>枚举所有本地用户名。</summary>
@@ -133,7 +165,7 @@ public static class AccountManager
 
     private static string GetCurrentShortUserNameReal()
     {
-        var full = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+        var full = global::System.Security.Principal.WindowsIdentity.GetCurrent().Name;
         var idx = full.IndexOf('\\');
         return idx >= 0 ? full[(idx + 1)..] : full;
     }

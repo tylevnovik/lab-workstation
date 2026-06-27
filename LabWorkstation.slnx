@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="LabWorkstation.Admin/LabWorkstation.Admin.csproj" />
   <Project Path="LabWorkstation.Common/LabWorkstation.Common.csproj" />
+  <Project Path="LabWorkstation.Kiosk/LabWorkstation.Kiosk.csproj" />
   <Project Path="LabWorkstation.Monitor/LabWorkstation.Monitor.csproj" />
   <Project Path="LabWorkstation.TrayApp/LabWorkstation.TrayApp.csproj" />
 </Solution>

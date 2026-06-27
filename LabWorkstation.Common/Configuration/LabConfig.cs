@@ -43,12 +43,74 @@ public static class LabConfig
     };
 
     // ── 日志路径 ──────────────────────────────────────────────
-    public static string AuditLogPath => System.IO.Path.Combine(PublicPath, "_使用手册", "admin_operations.log");
-    public static string MonitorLogPath => System.IO.Path.Combine(PublicPath, "_使用手册", "system_monitor.log");
+    // 注：使用 global::System.IO 以避免被同程序集 LabWorkstation.Common.System 命名空间遮蔽。
+    // 安全说明：审计/监控日志迁出公共区（旧路径 Lab_All 可改），现置于 ConfigDir\logs，
+    // ACL：Administrators/SYSTEM 完全控制，Lab_All 只读（用户在自助弹窗中读取自身审计行）。
+    public static string LogsDir => global::System.IO.Path.Combine(ConfigDir, "logs");
+    public static string AuditLogPath => global::System.IO.Path.Combine(LogsDir, "admin_operations.log");
+    public static string MonitorLogPath => global::System.IO.Path.Combine(LogsDir, "system_monitor.log");
+    /// <summary>旧审计日志路径（公共区），用于一次性迁移到 LogsDir。</summary>
+    public static string LegacyAuditLogPath => global::System.IO.Path.Combine(PublicPath, "_使用手册", "admin_operations.log");
+    public static string LegacyMonitorLogPath => global::System.IO.Path.Combine(PublicPath, "_使用手册", "system_monitor.log");
+
+    // ── 落盘配置（Store）──────────────────────────────────────
+    /// <summary>
+    /// 导师组/用户权威记录的 JSON 落盘目录。
+    /// 存放在 C:\ProgramData\LabWorkstation，默认仅 Administrators/SYSTEM 可访问，
+    /// 防止普通用户读取 users.json 中的存储密码。
+    /// </summary>
+    public static string ConfigDir => global::System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "LabWorkstation");
+    public static string AdvisorStorePath => global::System.IO.Path.Combine(ConfigDir, "advisors.json");
+    public static string UserStorePath => global::System.IO.Path.Combine(ConfigDir, "users.json");
+    public static string SystemStatePath => global::System.IO.Path.Combine(ConfigDir, "system_state.json");
+
+    /// <summary>
+    /// Kiosk 请求队列目录（迁出公共区，置于 ConfigDir\kiosk_queue）。
+    /// 安全说明：旧路径位于 D:\GroupData\_公共\_config\kiosk_queue，Lab_All 全员可读写，
+    /// 存在任意账户创建与密码嗅探风险。现迁至 ConfigDir 下，按子目录细粒度授权：
+    /// requests/ 仅 kiosk 可写；responses/ 仅 kiosk 可读；其他用户无任何权限。
+    /// </summary>
+    public static string KioskQueuePath => global::System.IO.Path.Combine(ConfigDir, "kiosk_queue");
+    /// <summary>旧 Kiosk 队列路径（公共区），用于一次性迁移。</summary>
+    public static string LegacyKioskQueuePath => global::System.IO.Path.Combine(PublicPath, "_config", "kiosk_queue");
+
+    // ── 系统注册表 ───────────────────────────────────────────
+    /// <summary>Windows ProfileList 注册表根路径，子键为用户 SID。</summary>
+    public const string ProfileListRegPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList";
+    /// <summary>ProfilesDirectory 注册表值名，控制新用户 Profile 的创建位置。</summary>
+    public const string ProfilesDirValueName = "ProfilesDirectory";
+    /// <summary>期望的 ProfilesDirectory 值（用户配置文件存放在数据盘）。</summary>
+    public const string DesiredProfilesDirectory = @"D:\Users";
+
+    // ── 壁纸与桌面 ───────────────────────────────────────────
+    public const string ScriptsDir = @"C:\Scripts";
+    public static string WallpaperPath => global::System.IO.Path.Combine(ScriptsDir, "LabWallpaper.png");
+    /// <summary>壁纸源文件（项目根的 wallpaper.png），由部署复制到 WallpaperPath。</summary>
+    public const string WallpaperSourceName = "wallpaper.png";
+    /// <summary>Default User 的 NTUSER.DAT，用于设置新用户默认壁纸。</summary>
+    public static string DefaultUserHivePath => global::System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "..", "Default", "NTUSER.DAT");
+
+    // ── SMB 共享 ─────────────────────────────────────────────
+    public const string SmbShareName = "GroupData";
 
     // ── 通知目录 ──────────────────────────────────────────────
-    public static string NotifyPendingPath => System.IO.Path.Combine(PublicPath, "_notifications", "pending");
-    public static string NotifySentPath => System.IO.Path.Combine(PublicPath, "_notifications", "sent");
+    public static string NotifyPendingPath => global::System.IO.Path.Combine(PublicPath, "_notifications", "pending");
+    public static string NotifySentPath => global::System.IO.Path.Combine(PublicPath, "_notifications", "sent");
+
+    // KioskRequestsPath / KioskResponsesPath 基于 KioskQueuePath（见上方 ConfigDir 区域定义）
+    public static string KioskRequestsPath => global::System.IO.Path.Combine(KioskQueuePath, "requests");
+    public static string KioskResponsesPath => global::System.IO.Path.Combine(KioskQueuePath, "responses");
+
+    /// <summary>
+    /// Kiosk 公告目录（ConfigDir\kiosk_announcements）。
+    /// 由 Admin 写入增删改，Kiosk 只读轮询展示。
+    /// 与 TrayApp 通知系统独立：不弹窗、不过期，常驻 Kiosk 界面。
+    /// ACL：Administrators/SYSTEM 完全控制，kiosk 只读。
+    /// </summary>
+    public static string KioskAnnouncementsPath => global::System.IO.Path.Combine(ConfigDir, "kiosk_announcements");
 
     // ── 审计日志轮转 ──────────────────────────────────────────
     public const long AuditLogMaxSizeBytes = 10L * 1024 * 1024; // 10 MB

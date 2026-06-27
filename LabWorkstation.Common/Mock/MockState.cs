@@ -120,6 +120,19 @@ public static class MockState
             Users[username] = u with { Password = newPassword };
     }
 
+    /// <summary>获取测试模式下用户的密码（仅供 VerifyPassword 等测试场景使用）。</summary>
+    public static string? GetPassword(string username) =>
+        Users.TryGetValue(username, out var u) ? u.Password : null;
+
+    public static string? GetUserSid(string username) =>
+        Users.TryGetValue(username, out _) ? $"S-1-5-21-MOCK-{username.GetHashCode()}" : null;
+
+    public static void DeleteUser(string username)
+    {
+        Users.Remove(username);
+        foreach (var g in Groups.Values) g.Remove(username);
+    }
+
     // ── 组查询 ────────────────────────────────────────────
     public static bool GroupExists(string groupName) => Groups.ContainsKey(groupName);
 
@@ -194,7 +207,7 @@ public static class MockState
         var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 操作人: TEST\\管理员 | 操作: {action} | 对象: {target} | 结果: {result}"
                    + (string.IsNullOrEmpty(detail) ? "" : $" | 详情: {detail}");
         AuditLines.Add(line);
-        System.Console.WriteLine("[测试模式审计] " + line);
+        global::System.Console.WriteLine("[测试模式审计] " + line);
     }
 
     public static List<string> ReadUserLines(string username, int count) =>

@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using LabWorkstation.Common;
 using LabWorkstation.Common.Audit;
 using LabWorkstation.Common.Configuration;
 using LabWorkstation.Common.LocalAccounts;
+using LabWorkstation.Common.Security;
+using LabWorkstation.Common.Store;
 using LabWorkstation.Admin.Dialogs;
 
 namespace LabWorkstation.Admin.Tabs;
@@ -67,14 +70,14 @@ public class MembersTab : UserControl
         {
             Text = "成员列表",
             Location = new Point(15, 68),
-            Size = new Size(745, 330)
+            Size = new Size(745, 340)
         };
         Controls.Add(listGroup);
 
         _memberList = new ListView
         {
             Location = new Point(12, 22),
-            Size = new Size(590, 295),
+            Size = new Size(590, 300),
             View = View.Details,
             FullRowSelect = true,
             GridLines = true
@@ -87,17 +90,45 @@ public class MembersTab : UserControl
         listGroup.Controls.Add(_memberList);
 
         var refreshBtn = NewBtn("刷新列表", 22, (_, _) => { RefreshFilterCombo(); RefreshMemberList(); });
-        var removeBtn = NewBtn("从组中移除", 60, (_, _) => RemoveFromGroup());
-        var enableBtn = NewBtn("启用账户", 100, (_, _) => ToggleUser(enable: true));
-        var disableBtn = NewBtn("禁用账户", 140, (_, _) => ToggleUser(enable: false));
-        var resetPwdBtn = NewBtn("重置密码", 180, (_, _) => ResetPassword());
-        var changeGroupBtn = NewBtn("修改分组", 220, (_, _) => ChangeGroup());
+        var removeBtn = NewBtn("从组中移除", 56, (_, _) => RemoveFromGroup());
+        var enableBtn = NewBtn("启用账户", 90, (_, _) => ToggleUser(enable: true));
+        var disableBtn = NewBtn("禁用账户", 124, (_, _) => ToggleUser(enable: false));
+        var resetPwdBtn = NewBtn("重置密码", 158, (_, _) => ResetPassword());
+        var changeGroupBtn = NewBtn("修改分组", 192, (_, _) => ChangeGroup());
         listGroup.Controls.Add(refreshBtn);
         listGroup.Controls.Add(removeBtn);
         listGroup.Controls.Add(enableBtn);
         listGroup.Controls.Add(disableBtn);
         listGroup.Controls.Add(resetPwdBtn);
         listGroup.Controls.Add(changeGroupBtn);
+
+        // 删除账户按钮（红色背景，自定义样式，不使用 NewBtn）
+        var deleteAccountBtn = new Button
+        {
+            Text = "删除账户",
+            Location = new Point(618, 226),
+            Size = new Size(112, 30),
+            BackColor = Color.FromArgb(180, 30, 30),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        deleteAccountBtn.FlatAppearance.BorderSize = 0;
+        deleteAccountBtn.Click += (_, _) => DeleteAccount();
+        listGroup.Controls.Add(deleteAccountBtn);
+
+        // 切换用户按钮（蓝色背景，自定义样式，不使用 NewBtn）
+        var switchUserBtn = new Button
+        {
+            Text = "切换用户",
+            Location = new Point(618, 264),
+            Size = new Size(112, 30),
+            BackColor = Color.FromArgb(0, 122, 204),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        switchUserBtn.FlatAppearance.BorderSize = 0;
+        switchUserBtn.Click += async (_, _) => await SwitchUserAsync();
+        listGroup.Controls.Add(switchUserBtn);
     }
 
     private Button NewBtn(string text, int y, EventHandler onClick)
@@ -275,6 +306,8 @@ public class MembersTab : UserControl
             if (dlg.ShowDialog() != DialogResult.OK) return;
 
             AccountManager.ResetPassword(username, dlg.NewPassword);
+            // 同步更新密码存储，确保切换用户时使用新密码（与 TrayApp 自助改密码保持一致）
+            UserStore.UpdatePassword(username, dlg.NewPassword);
             _shell.Log($"已重置 '{username}' 的密码");
             AuditLogger.Write("RESET_PASSWORD", username);
             MessageBox.Show("密码已重置", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -337,6 +370,131 @@ public class MembersTab : UserControl
         {
             _shell.Log($"修改分组失败: {ex.Message}", "ERROR");
             MessageBox.Show($"修改分组失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// 删除账户：彻底删除账户、Profile 和个人数据目录，不可撤销。
+    /// 删除后可用同名重新创建账户。
+    /// </summary>
+    private void DeleteAccount()
+    {
+        try
+        {
+            var username = GetSelectedUser();
+            if (username == null) return;
+
+            var msg = $"确定要删除账户 '{username}' 吗？\n\n" +
+                      "此操作将永久删除账户、Profile和个人数据目录，不可撤销。\n" +
+                      "删除后可用同名重新创建。";
+            if (MessageBox.Show(msg, "危险操作确认", MessageBoxButtons.YesNo, MessageBoxIcon.Warning)
+                != DialogResult.Yes) return;
+
+            _shell.Log($"开始删除账户 '{username}'...");
+            LabAccountService.DeleteLabUser(username, m => _shell.Log(m));
+
+            _shell.Log($"账户 '{username}' 已删除");
+            AuditLogger.Write("DELETE_USER", username);
+
+            _shell.RefreshMembers();
+            _shell.RefreshDepartUsers();
+            MessageBox.Show($"账户 '{username}' 已删除", "完成",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (LabOperationException ex)
+        {
+            _shell.Log($"删除账户失败: {ex.Message}", "ERROR");
+            AuditLogger.Write("DELETE_USER", ex.Target, AuditLogger.Result.Failed, ex.Detail);
+            MessageBox.Show($"删除账户失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        catch (Exception ex)
+        {
+            _shell.Log($"删除账户失败: {ex.Message}", "ERROR");
+            MessageBox.Show($"删除账户失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// 切换用户：通过远程桌面以指定用户身份登录本机，管理员会话保持不变。
+    /// 使用 UserStore 中存储的密码自动登录，无需管理员知道密码，也不修改密码。
+    /// 凭据通过 Windows 凭据管理器（CredWrite）保存，不经过命令行参数（避免密码被进程列表窥视）。
+    /// 异步等待 mstsc 退出，避免阻塞 Admin UI（用户可在 RDP 会话期间继续使用 Admin 面板）。
+    /// </summary>
+    private async Task SwitchUserAsync()
+    {
+        const string rdpServer = "127.0.0.1";
+        const string credTarget = "TERMSRV/127.0.0.1";
+        var username = "";
+        var credentialSaved = false;
+        try
+        {
+            username = GetSelectedUser() ?? "";
+            if (string.IsNullOrEmpty(username)) return;
+
+            // 从 UserStore 获取存储的密码
+            var storedPassword = UserStore.GetStoredPassword(username);
+            if (string.IsNullOrEmpty(storedPassword))
+            {
+                MessageBox.Show(
+                    $"无法获取用户 '{username}' 的存储密码。\n" +
+                    "该账户可能是通过旧版工具创建的，缺少密码记录。\n" +
+                    "请通过Admin面板重置该用户密码后再切换。",
+                    "无法切换", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (MessageBox.Show(
+                $"将以用户 '{username}' 身份打开远程桌面连接。\n" +
+                "管理员会话保持不变，关闭远程桌面窗口即可返回。\n" +
+                "Admin 面板在此期间仍可正常使用。",
+                "确认切换用户", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
+                return;
+
+            // 清除上次切换可能残留的 RDP 凭据（generic + domain_password × 2 个 target）
+            CredentialManager.ClearRdpCredentials(rdpServer);
+
+            // 使用 Windows 凭据管理器（CredWrite）保存凭据
+            // target 使用 TERMSRV/127.0.0.1（mstsc 实际查找的 target 格式）
+            if (!CredentialManager.WriteCredential(credTarget, username, storedPassword))
+            {
+                var err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                throw new Exception($"CredWrite 失败（Win32 错误码 {err}）");
+            }
+            credentialSaved = true;
+
+            // 启动 mstsc
+            _shell.Log($"启动远程桌面连接（用户 '{username}'）...");
+            var mstscPsi = new ProcessStartInfo
+            {
+                FileName = "mstsc.exe",
+                Arguments = $"/v:{rdpServer}",
+                UseShellExecute = false
+            };
+            var mstscProc = Process.Start(mstscPsi);
+            if (mstscProc == null)
+                throw new Exception("无法启动远程桌面进程 mstsc.exe");
+
+            // 异步等待 mstsc 退出，不阻塞 UI 线程
+            await mstscProc.WaitForExitAsync();
+
+            AuditLogger.Write("SWITCH_USER", username, detail: "远程桌面会话已结束");
+            _shell.Log($"已结束用户 '{username}' 的远程桌面会话");
+        }
+        catch (Exception ex)
+        {
+            _shell.Log($"切换用户失败: {ex.Message}", "ERROR");
+            AuditLogger.Write("SWITCH_USER", username, AuditLogger.Result.Failed, ex.Message);
+            MessageBox.Show($"切换用户失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            // 清理所有 RDP 相关凭据（generic + domain_password × 2 个 target）
+            // 防止残留凭据导致下次切换用户时进入上一次的会话
+            if (credentialSaved)
+            {
+                try { CredentialManager.ClearRdpCredentials(rdpServer); }
+                catch { }
+            }
         }
     }
 }

@@ -22,6 +22,7 @@ public partial class MainForm : Form, IAppShell
     private readonly RichTextBox _logBox;
     private readonly TabControl _tabs;
 
+    private readonly SystemInitTab _systemInitTab;
     private readonly MembersTab _membersTab;
     private readonly CreateAccountTab _createAccountTab;
     private readonly GroupManageTab _groupManageTab;
@@ -29,6 +30,7 @@ public partial class MainForm : Form, IAppShell
     private readonly BatchTab _batchTab;
     private readonly DepartureTab _departureTab;
     private readonly BroadcastTab _broadcastTab;
+    private readonly KioskAnnouncementsTab _kioskAnnouncementsTab;
 
     public MainForm()
     {
@@ -96,6 +98,7 @@ public partial class MainForm : Form, IAppShell
         logGroup.SendToBack();
 
         // 实例化各 Tab
+        _systemInitTab = new SystemInitTab(this);
         _membersTab = new MembersTab(this);
         _createAccountTab = new CreateAccountTab(this);
         _groupManageTab = new GroupManageTab(this);
@@ -103,7 +106,9 @@ public partial class MainForm : Form, IAppShell
         _batchTab = new BatchTab(this);
         _departureTab = new DepartureTab(this);
         _broadcastTab = new BroadcastTab(this);
+        _kioskAnnouncementsTab = new KioskAnnouncementsTab(this);
 
+        AddTab("系统初始化", _systemInitTab);
         AddTab("成员管理", _membersTab);
         AddTab("创建账户", _createAccountTab);
         AddTab("分组管理", _groupManageTab);
@@ -111,6 +116,7 @@ public partial class MainForm : Form, IAppShell
         AddTab("批量操作", _batchTab);
         AddTab("离校管理", _departureTab);
         AddTab("公告推送", _broadcastTab);
+        AddTab("Kiosk 公告", _kioskAnnouncementsTab);
 
         Shown += OnShown;
     }
@@ -127,20 +133,14 @@ public partial class MainForm : Form, IAppShell
     {
         Log("工具已启动，正在检查环境...");
 
-        // 检查 Lab_All
+        // 检查 Lab_All（仅诊断提示，不再自动创建——统一由『系统初始化』Tab 负责）
         if (GroupManager.GroupExists(LabConfig.AllGroup))
         {
             Log($"全员组 '{LabConfig.AllGroup}' 已存在");
         }
         else
         {
-            Log($"全员组 '{LabConfig.AllGroup}' 不存在，正在自动创建...", "WARN");
-            try
-            {
-                GroupManager.CreateGroup(LabConfig.AllGroup);
-                Log($"全员组 '{LabConfig.AllGroup}' 已创建");
-            }
-            catch (Exception ex) { Log($"创建全员组失败: {ex.Message}", "ERROR"); }
+            Log($"全员组 '{LabConfig.AllGroup}' 不存在，请到『系统初始化』Tab 创建", "WARN");
         }
 
         // 检查数据区
@@ -166,7 +166,9 @@ public partial class MainForm : Form, IAppShell
         _groupManageTab.RefreshGroupListView();
         _groupManageTab.RefreshGrpUserCombo();
         _departureTab.RefreshDepartUserCombo();
+        _broadcastTab.RefreshActive();
         _broadcastTab.RefreshHistory();
+        _kioskAnnouncementsTab.RefreshList();
     }
 
     private void CheckPath(string path, string label)
@@ -174,7 +176,7 @@ public partial class MainForm : Form, IAppShell
         if (Directory.Exists(path))
             Log($"{label} {path} 已就绪");
         else
-            Log($"{label} {path} 不存在（请先运行初始化脚本或手动创建）", "WARN");
+            Log($"{label} {path} 不存在，请到『系统初始化』Tab 执行初始化", "WARN");
     }
 
     // ── IAppShell ──────────────────────────────────────────────

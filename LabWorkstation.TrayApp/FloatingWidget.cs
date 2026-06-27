@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using LabWorkstation.Common.Configuration;
 using LabWorkstation.Common.LocalAccounts;
@@ -258,9 +259,27 @@ public sealed class FloatingWidget : Form
         try
         {
             if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
-                System.Diagnostics.Process.Start("explorer.exe", $"\"{path}\"");
+            {
+                // 用 UseShellExecute 直接打开文件夹路径（不通过 explorer.exe 传参），
+                // 避免提权会话下 explorer.exe 参数丢失的问题。
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+            }
         }
-        catch { /* 静默 */ }
+        catch
+        {
+            // fallback：尝试 explorer.exe
+            try
+            {
+                if (!string.IsNullOrEmpty(path))
+                    Process.Start("explorer.exe", $"\"{path}\"");
+            }
+            catch { /* 静默 */ }
+        }
     }
 
     private static GraphicsPath MakeRoundedRect(Rectangle rect, int radius)

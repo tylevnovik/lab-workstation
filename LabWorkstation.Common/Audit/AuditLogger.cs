@@ -1,5 +1,6 @@
 using System.Security.Principal;
 using System.Text;
+using System.Text.RegularExpressions;
 using LabWorkstation.Common.Configuration;
 using LabWorkstation.Common.Logging;
 using LabWorkstation.Common.Mock;
@@ -38,7 +39,12 @@ public static class AuditLogger
         }
     }
 
-    /// <summary>读取与某用户相关的最近 N 条审计记录（供 TrayApp 自助服务展示）。</summary>
+    /// <summary>
+    /// 读取与某用户相关的最近 N 条审计记录（供 TrayApp 自助服务展示）。
+    /// 精确匹配规则（避免子串误匹配，如 "zhang" 不应匹配 "zhangsan"）：
+    /// - 对象字段值等于 username：`| 对象: {username} |`
+    /// - 操作人字段以 `\username` 结尾：`操作人: DOMAIN\{username} |`
+    /// </summary>
     public static List<string> ReadUserLines(string username, int count = 20)
     {
         if (LabConfig.TestMode) return MockState.ReadUserLines(username, count);
@@ -46,10 +52,19 @@ public static class AuditLogger
         try
         {
             if (!File.Exists(LabConfig.AuditLogPath)) return result;
+
+            // 构造精确匹配正则（OR 关系，任一命中即算相关）：
+            // 1. 对象字段：| 对象: {username} |（字段值前后均有 " | " 定界，避免子串匹配）
+            // 2. 操作人字段：操作人: DOMAIN\{username} |（WindowsIdentity.Name 返回 DOMAIN\user 格式）
+            var escaped = Regex.Escape(username);
+            var targetPattern = $@"\| 对象: {escaped} \|";
+            var operatorPattern = $@"操作人: [^\|]*\\{escaped} \|";
+            var regex = new Regex($"({targetPattern}|{operatorPattern})", RegexOptions.Compiled);
+
             var allLines = File.ReadAllLines(LabConfig.AuditLogPath, Encoding.UTF8);
             foreach (var line in allLines)
             {
-                if (line.Contains(username, StringComparison.Ordinal))
+                if (regex.IsMatch(line))
                     result.Add(line);
             }
             return result.TakeLast(count).ToList();

@@ -4,6 +4,7 @@ using LabWorkstation.Common.Audit;
 using LabWorkstation.Common.Configuration;
 using LabWorkstation.Common.LocalAccounts;
 using LabWorkstation.Common.Storage;
+using LabWorkstation.Common.Store;
 
 namespace LabWorkstation.TrayApp.Dialogs;
 
@@ -176,6 +177,8 @@ public sealed class SelfServiceDialog : Form
             try
             {
                 AccountManager.ChangePassword(_userName, txtOldPwd.Text, newPwd);
+                // 同步更新存储密码，确保管理员切换用户时密码一致
+                UserStore.UpdatePassword(_userName, newPwd);
                 lblPwdStatus.ForeColor = SuccessColor;
                 lblPwdStatus.Text = "密码修改成功";
                 txtOldPwd.Text = "";

@@ -4,14 +4,20 @@ using LabWorkstation.Common.Notifications;
 
 namespace LabWorkstation.Admin.Tabs;
 
-/// <summary>Tab 7：公告推送。发送通知（标题/内容/重要程度），查看历史，归档待发送。</summary>
+/// <summary>
+/// Tab 7：公告推送。
+/// 发送通知（标题/内容/重要程度），查看活跃通知（pending）和历史通知（sent），
+/// 归档（将 pending 移至 sent），删除通知。
+/// 每个用户的已读状态由 TrayApp 本地追踪，Admin 无需关心。
+/// </summary>
 public class BroadcastTab : UserControl
 {
     private readonly IAppShell _shell;
     private readonly TextBox _bcastTitleBox;
     private readonly ComboBox _bcastImportanceCombo;
     private readonly RichTextBox _bcastMsgBox;
-    private readonly ComboBox _bcastHistoryCombo;
+    private readonly ListView _activeList;
+    private readonly ListView _historyList;
 
     public BroadcastTab(IAppShell shell)
     {
@@ -20,7 +26,7 @@ public class BroadcastTab : UserControl
 
         var broadcastIntro = new Label
         {
-            Text = "向所有在线用户推送通知。通知保存后由用户端 Lab-TrayApp 轮询并弹出提醒。",
+            Text = "向所有用户推送通知。发送后所有在线用户的 TrayApp 将自动弹出自定义弹窗。每个用户独立追踪已读状态。",
             Location = new Point(20, 15),
             MaximumSize = new Size(745, 0),
             AutoSize = true
@@ -32,7 +38,7 @@ public class BroadcastTab : UserControl
         {
             Text = "编辑通知",
             Location = new Point(15, 45),
-            Size = new Size(745, 310)
+            Size = new Size(745, 225)
         };
         Controls.Add(broadcastEditGroup);
 
@@ -61,7 +67,7 @@ public class BroadcastTab : UserControl
         _bcastMsgBox = new RichTextBox
         {
             Location = new Point(15, 88),
-            Size = new Size(715, 180),
+            Size = new Size(715, 100),
             BorderStyle = BorderStyle.FixedSingle,
             Font = new Font("Microsoft YaHei UI", 9.5F)
         };
@@ -70,8 +76,8 @@ public class BroadcastTab : UserControl
         var bcastSendBtn = new Button
         {
             Text = "发送通知",
-            Location = new Point(580, 280),
-            Size = new Size(150, 30),
+            Location = new Point(580, 195),
+            Size = new Size(150, 25),
             BackColor = Color.FromArgb(0, 122, 204),
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
@@ -80,30 +86,98 @@ public class BroadcastTab : UserControl
         bcastSendBtn.Click += (_, _) => SendNotification();
         broadcastEditGroup.Controls.Add(bcastSendBtn);
 
-        // -- 历史通知 --
-        var bcastHistoryGroup = new GroupBox
+        // -- 活跃通知（pending） --
+        var activeGroup = new GroupBox
         {
-            Text = "历史通知",
-            Location = new Point(15, 363),
-            Size = new Size(745, 65)
+            Text = "活跃通知（待推送 / 推送中）",
+            Location = new Point(15, 278),
+            Size = new Size(745, 160)
         };
-        Controls.Add(bcastHistoryGroup);
+        Controls.Add(activeGroup);
 
-        _bcastHistoryCombo = new ComboBox
+        _activeList = new ListView
         {
-            Location = new Point(15, 28),
-            Size = new Size(530, 25),
-            DropDownStyle = ComboBoxStyle.DropDownList
+            Location = new Point(10, 20),
+            Size = new Size(590, 100),
+            View = View.Details,
+            FullRowSelect = true,
+            GridLines = true,
+            Font = new Font("Microsoft YaHei UI", 9F)
         };
-        bcastHistoryGroup.Controls.Add(_bcastHistoryCombo);
+        _activeList.Columns.Add("标题", 200);
+        _activeList.Columns.Add("等级", 50);
+        _activeList.Columns.Add("发送时间", 120);
+        _activeList.Columns.Add("发送人", 80);
+        _activeList.Columns.Add("ID", 80);
+        activeGroup.Controls.Add(_activeList);
 
-        var bcastHistoryRefreshBtn = new Button { Text = "刷新", Location = new Point(555, 26), Size = new Size(75, 28) };
-        bcastHistoryRefreshBtn.Click += (_, _) => RefreshHistory();
-        bcastHistoryGroup.Controls.Add(bcastHistoryRefreshBtn);
+        var refreshActiveBtn = new Button { Text = "刷新", Location = new Point(610, 20), Size = new Size(60, 28) };
+        refreshActiveBtn.Click += (_, _) => RefreshActive();
+        activeGroup.Controls.Add(refreshActiveBtn);
 
-        var bcastArchiveBtn = new Button { Text = "移至历史", Location = new Point(640, 26), Size = new Size(90, 28) };
-        bcastArchiveBtn.Click += (_, _) => ArchivePending();
-        bcastHistoryGroup.Controls.Add(bcastArchiveBtn);
+        var archiveBtn = new Button
+        {
+            Text = "归档全部",
+            Location = new Point(610, 55),
+            Size = new Size(120, 28),
+            BackColor = Color.FromArgb(60, 60, 80),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        archiveBtn.Click += (_, _) => ArchiveAll();
+        activeGroup.Controls.Add(archiveBtn);
+
+        var deleteActiveBtn = new Button
+        {
+            Text = "删除选中",
+            Location = new Point(610, 90),
+            Size = new Size(120, 28),
+            BackColor = Color.FromArgb(180, 30, 30),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        deleteActiveBtn.Click += (_, _) => DeleteSelected(_activeList);
+        activeGroup.Controls.Add(deleteActiveBtn);
+
+        // -- 历史通知（sent） --
+        var historyGroup = new GroupBox
+        {
+            Text = "历史通知（已归档）",
+            Location = new Point(15, 446),
+            Size = new Size(745, 130)
+        };
+        Controls.Add(historyGroup);
+
+        _historyList = new ListView
+        {
+            Location = new Point(10, 20),
+            Size = new Size(590, 95),
+            View = View.Details,
+            FullRowSelect = true,
+            GridLines = true,
+            Font = new Font("Microsoft YaHei UI", 9F)
+        };
+        _historyList.Columns.Add("标题", 200);
+        _historyList.Columns.Add("等级", 50);
+        _historyList.Columns.Add("发送时间", 120);
+        _historyList.Columns.Add("ID", 80);
+        historyGroup.Controls.Add(_historyList);
+
+        var refreshHistoryBtn = new Button { Text = "刷新", Location = new Point(610, 20), Size = new Size(60, 28) };
+        refreshHistoryBtn.Click += (_, _) => RefreshHistory();
+        historyGroup.Controls.Add(refreshHistoryBtn);
+
+        var deleteHistoryBtn = new Button
+        {
+            Text = "删除选中",
+            Location = new Point(610, 55),
+            Size = new Size(120, 28),
+            BackColor = Color.FromArgb(180, 30, 30),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        deleteHistoryBtn.Click += (_, _) => DeleteSelected(_historyList);
+        historyGroup.Controls.Add(deleteHistoryBtn);
     }
 
     private void SendNotification()
@@ -131,15 +205,14 @@ public class BroadcastTab : UserControl
             _shell.Log($"通知已发送：'{title}' ({importance}) -> {fileName}");
             AuditLogger.Write("BROADCAST", title, detail: $"重要程度: {importance}, 文件: {fileName}");
 
-            // 清空输入
             _bcastTitleBox.Text = "";
             _bcastMsgBox.Text = "";
             _bcastImportanceCombo.SelectedIndex = 0;
 
-            MessageBox.Show($"通知已发送！\n\n标题：{title}\n重要程度：{importance}\n文件：{fileName}\n\n用户端将自动轮询并弹出提醒。",
+            MessageBox.Show($"通知已发送！\n\n标题：{title}\n重要程度：{importance}\n\n所有在线用户的 TrayApp 将自动弹出通知弹窗。",
                 "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            RefreshHistory();
+            RefreshActive();
         }
         catch (Exception ex)
         {
@@ -149,49 +222,94 @@ public class BroadcastTab : UserControl
         }
     }
 
+    public void RefreshActive()
+    {
+        _activeList.Items.Clear();
+        List<Notification> pending;
+        try { pending = NotificationStore.GetPending(); }
+        catch (Exception ex) { _shell.Log($"刷新活跃通知失败: {ex.Message}", "WARN"); return; }
+
+        foreach (var n in pending.OrderByDescending(n => n.Timestamp))
+        {
+            var item = new ListViewItem(n.Title);
+            item.SubItems.Add(n.ImportanceText);
+            item.SubItems.Add(n.Timestamp.ToString("MM-dd HH:mm:ss"));
+            item.SubItems.Add(n.Sender);
+            item.SubItems.Add(n.Id);
+            item.Tag = n.Id;
+            _activeList.Items.Add(item);
+        }
+    }
+
     public void RefreshHistory()
     {
-        _bcastHistoryCombo.Items.Clear();
+        _historyList.Items.Clear();
         List<Notification> sent;
         try { sent = NotificationStore.GetSent(); }
         catch (Exception ex) { _shell.Log($"刷新历史通知失败: {ex.Message}", "WARN"); return; }
 
         foreach (var n in sent)
         {
-            var display = $"[{n.Timestamp:yyyy-MM-dd HH:mm:ss}] {n.Title} ({n.ImportanceText})";
-            _bcastHistoryCombo.Items.Add(display);
+            var item = new ListViewItem(n.Title);
+            item.SubItems.Add(n.ImportanceText);
+            item.SubItems.Add(n.Timestamp.ToString("MM-dd HH:mm:ss"));
+            item.SubItems.Add(n.Id);
+            item.Tag = n.Id;
+            _historyList.Items.Add(item);
         }
-        if (_bcastHistoryCombo.Items.Count > 0) _bcastHistoryCombo.SelectedIndex = 0;
     }
 
-    private void ArchivePending()
+    private void ArchiveAll()
     {
         try
         {
-            int moved;
-            try { moved = NotificationStore.ArchivePending(); }
-            catch (Exception ex)
+            var moved = NotificationStore.ArchivePending();
+            if (moved == 0)
             {
-                _shell.Log($"移至历史失败: {ex.Message}", "ERROR");
-                MessageBox.Show($"移至历史失败:\n{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("活跃通知为空，无需归档", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            if (moved == 0)
-            {
-                MessageBox.Show("待发送目录为空", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information); return;
-            }
-
-            _shell.Log($"已将 {moved} 条通知移至历史");
-            AuditLogger.Write("BROADCAST_ARCHIVE", $"{moved} notifications", detail: "移至历史目录");
+            _shell.Log($"已归档 {moved} 条通知到历史");
+            AuditLogger.Write("BROADCAST_ARCHIVE", $"{moved} notifications", detail: "归档全部活跃通知");
+            RefreshActive();
             RefreshHistory();
-            MessageBox.Show($"已将 {moved} 条通知移至历史", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show($"已归档 {moved} 条通知到历史", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
-            _shell.Log($"移至历史失败: {ex.Message}", "ERROR");
-            AuditLogger.Write("BROADCAST_ARCHIVE", "notifications", AuditLogger.Result.Failed, ex.Message);
-            MessageBox.Show($"移至历史失败:\n{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            _shell.Log($"归档失败: {ex.Message}", "ERROR");
+            MessageBox.Show($"归档失败:\n{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private void DeleteSelected(ListView list)
+    {
+        if (list.SelectedItems.Count == 0)
+        {
+            MessageBox.Show("请先选中要删除的通知", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var ids = list.SelectedItems.Cast<ListViewItem>().Select(i => i.Tag as string).Where(s => s != null).ToList();
+        if (ids.Count == 0) return;
+
+        if (MessageBox.Show($"确定删除 {ids.Count} 条通知？此操作不可撤销。",
+            "确认删除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+
+        var deleted = 0;
+        foreach (var id in ids)
+        {
+            try
+            {
+                if (NotificationStore.Delete(id!)) deleted++;
+            }
+            catch { }
+        }
+
+        _shell.Log($"已删除 {deleted} 条通知");
+        AuditLogger.Write("BROADCAST_DELETE", $"{deleted} notifications", detail: "删除通知");
+        RefreshActive();
+        RefreshHistory();
     }
 }
