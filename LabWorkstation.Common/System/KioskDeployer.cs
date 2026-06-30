@@ -37,8 +37,34 @@ public static class KioskDeployer
         // 2. 创建 kiosk 账户（返回本次使用的密码，已存在账户返回 null 表示不修改密码）
         var kioskPassword = CreateKioskAccount();
 
-        // 3. 配置自定义 Shell
-        ConfigureCustomShell();
+        // 2.5 调试模式：将 kiosk 加入 Remote Desktop Users 组，允许 RDP 连接排查
+        //     正式模式：主动从 Remote Desktop Users 组移除 kiosk，避免生产环境下可被 RDP（安全收紧）
+        if (LabConfig.KioskDebugMode)
+        {
+            try
+            {
+                GroupManager.AddMember("Remote Desktop Users", KioskUsername);
+                Console.WriteLine("[KioskDeployer] 调试模式：kiosk 已加入 Remote Desktop Users 组（可 RDP）");
+            }
+            catch (Exception ex) { Console.WriteLine($"[KioskDeployer] 加入 RDP 组失败（可忽略）: {ex.Message}"); }
+        }
+        else
+        {
+            try
+            {
+                GroupManager.RemoveMember("Remote Desktop Users", KioskUsername);
+                Console.WriteLine("[KioskDeployer] 正式模式：kiosk 已从 Remote Desktop Users 组移除（禁止 RDP）");
+            }
+            catch (Exception ex) { Console.WriteLine($"[KioskDeployer] 移除 RDP 组失败（可忽略，可能本就不在组内）: {ex.Message}"); }
+        }
+
+        // 3. 配置 Shell：调试模式用 explorer.exe（RDP 可见桌面），生产模式用 Kiosk.exe
+        var shellPath = LabConfig.KioskDebugMode
+            ? @"explorer.exe"
+            : Path.Combine(LabConfig.ScriptsDir, "LabWorkstation.Kiosk", "LabWorkstation.Kiosk.exe");
+        ConfigureCustomShell(shellPath);
+        if (LabConfig.KioskDebugMode)
+            Console.WriteLine("[KioskDeployer] 调试模式：Shell 已设为 explorer.exe（RDP 可见桌面）");
 
         // 4. 配置自动登录（使用步骤 2 返回的密码；若账户已存在则用 null 跳过密码写入）
         ConfigureAutoLogon(kioskPassword);
@@ -137,14 +163,13 @@ public static class KioskDeployer
     }
 
     /// <summary>
-    /// 配置 kiosk 用户的自定义 Shell：
-    /// 在 kiosk 用户的 NTUSER.DAT 中将 Shell 替换为 Kiosk 应用路径。
-    /// 这样 kiosk 用户登录后不加载 explorer.exe，只运行 Kiosk 应用。
+    /// 配置 kiosk 用户的 Shell：在 kiosk 用户的 NTUSER.DAT 中将 Shell 替换为指定路径。
+    /// 生产模式传入 Kiosk.exe 路径（登录后只运行 Kiosk 应用）；
+    /// 调试模式传入 explorer.exe（RDP 可见桌面，便于手动运行/排查 Kiosk 应用）。
     /// </summary>
-    private static void ConfigureCustomShell()
+    /// <param name="shellPath">Shell 可执行文件路径。</param>
+    private static void ConfigureCustomShell(string shellPath)
     {
-        var kioskExePath = Path.Combine(LabConfig.ScriptsDir, "LabWorkstation.Kiosk", "LabWorkstation.Kiosk.exe");
-
         try
         {
             // 确保 Profile 已生成
@@ -181,10 +206,9 @@ public static class KioskDeployer
             // 加载 hive 并设置 Shell
             Native.RegistryHiveLoader.UsingHive(hivePath, hiveKey =>
             {
-                // 设置 Shell 为 Kiosk 应用（替换默认的 explorer.exe）
                 using var winlogon = hiveKey.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon");
-                winlogon.SetValue("Shell", kioskExePath, RegistryValueKind.String);
-                Console.WriteLine($"[KioskDeployer] kiosk Shell 已设置为: {kioskExePath}");
+                winlogon.SetValue("Shell", shellPath, RegistryValueKind.String);
+                Console.WriteLine($"[KioskDeployer] kiosk Shell 已设置为: {shellPath}");
             });
         }
         catch (Exception ex)

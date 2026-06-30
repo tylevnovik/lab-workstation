@@ -11,6 +11,8 @@ public sealed class KioskRequest
     public string Username { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public string AdvisorName { get; set; } = "";
+    /// <summary>用户在 Kiosk 端自行设置的密码（明文，仅经队列文件传递给 Monitor）。</summary>
+    public string Password { get; set; } = "";
     public DateTime Timestamp { get; set; }
 }
 

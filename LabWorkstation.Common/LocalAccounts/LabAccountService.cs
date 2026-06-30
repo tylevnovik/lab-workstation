@@ -96,15 +96,43 @@ public static class LabAccountService
         return personalDir;
     }
 
-    /// <summary>生成 14 位随机密码（与原 PS Generate-RandomPassword 字符集一致）。</summary>
+    /// <summary>
+    /// 生成指定长度的随机强密码，保证至少包含小写、大写、数字、符号各一个，
+    /// 以满足 Windows 默认密码复杂度策略（复杂度要求至少 3/4 类，这里 4 类全包更稳妥）。
+    /// 字符集排除了易混淆字符（0/O/o、1/I/l）。
+    /// </summary>
     public static string GenerateRandomPassword(int length = 14)
     {
-        const string chars = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$";
-        var sb = new StringBuilder(length);
+        if (length < 4)
+            throw new ArgumentException("密码长度不能小于 4（需容纳 4 类字符各一个）", nameof(length));
+
+        const string lower = "abcdefghijkmnpqrstuvwxyz";
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string digit = "23456789";
+        const string symbol = "!@#$%^&*";
+        const string all = lower + upper + digit + symbol;
+
         var rng = Random.Shared;
-        for (var i = 0; i < length; i++)
-            sb.Append(chars[rng.Next(chars.Length)]);
-        return sb.ToString();
+        var chars = new char[length];
+
+        // 保证每类至少一个
+        chars[0] = lower[rng.Next(lower.Length)];
+        chars[1] = upper[rng.Next(upper.Length)];
+        chars[2] = digit[rng.Next(digit.Length)];
+        chars[3] = symbol[rng.Next(symbol.Length)];
+
+        // 其余位置从全字符集随机
+        for (var i = 4; i < length; i++)
+            chars[i] = all[rng.Next(all.Length)];
+
+        // Fisher-Yates 打乱，避免前 4 位固定为各类字符
+        for (var i = chars.Length - 1; i > 0; i--)
+        {
+            var j = rng.Next(i + 1);
+            (chars[i], chars[j]) = (chars[j], chars[i]);
+        }
+
+        return new string(chars);
     }
 
     /// <summary>

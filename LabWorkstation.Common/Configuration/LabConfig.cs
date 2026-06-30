@@ -125,4 +125,15 @@ public static class LabConfig
     /// 绝不修改真实系统。由各应用入口（--test 参数）设置。
     /// </summary>
     public static bool TestMode { get; set; }
+
+    // ── Kiosk 调试模式 ────────────────────────────────────────
+    /// <summary>
+    /// Kiosk 调试模式开关。为 true 时：
+    /// 1. KioskDeployer 将 kiosk 用户 Shell 设为 explorer.exe（而非 Kiosk.exe），
+    ///    允许通过 RDP 登录看到完整桌面，便于手动运行/排查 Kiosk 应用；
+    /// 2. KioskDeployer 将 kiosk 加入 Remote Desktop Users 组，允许 RDP 连接；
+    /// 3. Kiosk 应用启动时写详细日志到 %LocalAppData%\LabWorkstation\kiosk_debug.log。
+    /// 排查完毕后改回 false 重新部署即可恢复生产模式（自定义 Shell + 自动登录）。
+    /// </summary>
+    public static bool KioskDebugMode { get; set; } = false; // 黑屏已修复，切回正式模式
 }

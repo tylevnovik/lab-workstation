@@ -27,6 +27,8 @@ public sealed class KioskForm : Form
 
     private readonly TextBox _usernameBox;
     private readonly TextBox _displayNameBox;
+    private readonly TextBox _passwordBox;
+    private readonly TextBox _passwordConfirmBox;
     private readonly ComboBox _advisorCombo;
     private readonly Label _statusLabel;
     private readonly Button _submitBtn;
@@ -42,7 +44,10 @@ public sealed class KioskForm : Form
     private readonly Panel _usersPanel;
     private readonly ListBox _usersList;
     private readonly Button _toggleUsersBtn;
+    private readonly Button _loginSelectedBtn;
     private bool _usersPanelVisible;
+    /// <summary>用户列表项对应的用户名（与 _usersList 显示项一一对应）。</summary>
+    private List<string> _usernames = new();
 
     // Monitor 在线状态指示器
     private readonly Label _monitorStatusLabel;
@@ -78,6 +83,7 @@ public sealed class KioskForm : Form
 
     public KioskForm()
     {
+        Program.WriteDebugLog("[FORM] KioskForm 构造开始");
         Text = "工作站自助开户";
         FormBorderStyle = FormBorderStyle.None;
         WindowState = FormWindowState.Maximized;
@@ -127,11 +133,7 @@ public sealed class KioskForm : Form
         };
         Controls.Add(_monitorStatusLabel);
 
-        // 启动后台心跳检查（首次立即检查，之后每 10 秒一次）
-        CheckHeartbeat();
-        _heartbeatTimer = new System.Windows.Forms.Timer { Interval = HeartbeatCheckIntervalSeconds * 1000 };
-        _heartbeatTimer.Tick += (_, _) => CheckHeartbeat();
-        _heartbeatTimer.Start();
+        // 心跳检查与定时器在构造函数末尾启动（避免 _advisorCombo/_submitBtn 未就绪时触发 UI 更新）
 
         // ── 公告面板（右侧）──
         var annPanelWidth = 420;
@@ -215,6 +217,7 @@ public sealed class KioskForm : Form
         _announcementsPanel.Controls.Add(_announcementsList);
 
         // 首次加载公告 + 启动定时刷新
+        Program.WriteDebugLog("[FORM] 加载公告");
         LoadAnnouncements();
         _announcementRefreshTimer = new System.Windows.Forms.Timer
         {
@@ -223,16 +226,19 @@ public sealed class KioskForm : Form
         _announcementRefreshTimer.Tick += (_, _) => LoadAnnouncements();
         _announcementRefreshTimer.Start();
 
-        // ── 表单卡片 ──
+        // ── 表单卡片（在左侧可用区域居中，右侧留给公告面板）──
         var cardWidth = 480;
-        // 左侧固定边距，右侧空间留给公告面板
-        var cardX = 60;
+        var annPanelWidthForLayout = 420;
+        var annPanelRightMargin = 40;
+        var leftAreaWidth = screen.Width - annPanelWidthForLayout - annPanelRightMargin;
+        var cardX = Math.Max(20, (leftAreaWidth - cardWidth) / 2);
         var cardY = 170;
+        var cardHeight = 480; // 加密码+确认密码两行后增高
 
         var card = new Panel
         {
             Location = new Point(cardX, cardY),
-            Size = new Size(cardWidth, 360),
+            Size = new Size(cardWidth, cardHeight),
             BackColor = CardBg
         };
         Controls.Add(card);
@@ -243,14 +249,14 @@ public sealed class KioskForm : Form
             Text = "登录用户名",
             ForeColor = MutedText,
             Font = new Font("Microsoft YaHei UI", 10F),
-            Location = new Point(30, 30),
+            Location = new Point(30, 20),
             AutoSize = true
         };
         card.Controls.Add(userLabel);
 
         _usernameBox = new TextBox
         {
-            Location = new Point(30, 55),
+            Location = new Point(30, 45),
             Size = new Size(cardWidth - 60, 35),
             Font = new Font("Microsoft YaHei UI", 13F),
             BackColor = BgColor,
@@ -265,14 +271,14 @@ public sealed class KioskForm : Form
             Text = "你的姓名",
             ForeColor = MutedText,
             Font = new Font("Microsoft YaHei UI", 10F),
-            Location = new Point(30, 110),
+            Location = new Point(30, 95),
             AutoSize = true
         };
         card.Controls.Add(displayLabel);
 
         _displayNameBox = new TextBox
         {
-            Location = new Point(30, 135),
+            Location = new Point(30, 120),
             Size = new Size(cardWidth - 60, 35),
             Font = new Font("Microsoft YaHei UI", 13F),
             BackColor = BgColor,
@@ -281,34 +287,80 @@ public sealed class KioskForm : Form
         };
         card.Controls.Add(_displayNameBox);
 
+        // 密码
+        var pwdLabel = new Label
+        {
+            Text = "设置密码（需含大小写字母、数字、符号，至少 8 位）",
+            ForeColor = MutedText,
+            Font = new Font("Microsoft YaHei UI", 9F),
+            Location = new Point(30, 170),
+            AutoSize = true
+        };
+        card.Controls.Add(pwdLabel);
+
+        _passwordBox = new TextBox
+        {
+            Location = new Point(30, 192),
+            Size = new Size(cardWidth - 60, 35),
+            Font = new Font("Microsoft YaHei UI", 13F),
+            BackColor = BgColor,
+            ForeColor = TextColor,
+            BorderStyle = BorderStyle.FixedSingle,
+            UseSystemPasswordChar = true
+        };
+        card.Controls.Add(_passwordBox);
+
+        // 确认密码
+        var pwdConfirmLabel = new Label
+        {
+            Text = "确认密码",
+            ForeColor = MutedText,
+            Font = new Font("Microsoft YaHei UI", 10F),
+            Location = new Point(30, 240),
+            AutoSize = true
+        };
+        card.Controls.Add(pwdConfirmLabel);
+
+        _passwordConfirmBox = new TextBox
+        {
+            Location = new Point(30, 265),
+            Size = new Size(cardWidth - 60, 35),
+            Font = new Font("Microsoft YaHei UI", 13F),
+            BackColor = BgColor,
+            ForeColor = TextColor,
+            BorderStyle = BorderStyle.FixedSingle,
+            UseSystemPasswordChar = true
+        };
+        card.Controls.Add(_passwordConfirmBox);
+
         // 导师组
         var advisorLabel = new Label
         {
             Text = "选择你的导师组",
             ForeColor = MutedText,
             Font = new Font("Microsoft YaHei UI", 10F),
-            Location = new Point(30, 190),
+            Location = new Point(30, 315),
             AutoSize = true
         };
         card.Controls.Add(advisorLabel);
 
         _advisorCombo = new ComboBox
         {
-            Location = new Point(30, 215),
+            Location = new Point(30, 340),
             Size = new Size(cardWidth - 60, 35),
             Font = new Font("Microsoft YaHei UI", 12F),
             DropDownStyle = ComboBoxStyle.DropDownList,
             BackColor = BgColor,
             ForeColor = TextColor
         };
-        LoadAdvisors();
+        _advisorCombo.SelectedIndexChanged += (_, _) => UpdateSubmitButton();
         card.Controls.Add(_advisorCombo);
 
-        // 提交按钮
+        // 提交按钮（必须在 LoadAdvisors 之前创建：LoadAdvisors 会设置 _submitBtn.Enabled）
         _submitBtn = new Button
         {
             Text = "创建账户",
-            Location = new Point(30, 280),
+            Location = new Point(30, 400),
             Size = new Size(cardWidth - 60, 50),
             BackColor = Accent,
             ForeColor = BgColor,
@@ -320,6 +372,10 @@ public sealed class KioskForm : Form
         _submitBtn.Click += (_, _) => SubmitRequest();
         card.Controls.Add(_submitBtn);
 
+        // 加载导师组（此时 _advisorCombo 与 _submitBtn 均已就绪）
+        Program.WriteDebugLog("[FORM] 加载导师组");
+        LoadAdvisors();
+
         // 状态标签
         _statusLabel = new Label
         {
@@ -327,7 +383,7 @@ public sealed class KioskForm : Form
             ForeColor = MutedText,
             Font = new Font("Microsoft YaHei UI", 11F),
             TextAlign = ContentAlignment.MiddleCenter,
-            Location = new Point(0, cardY + 380),
+            Location = new Point(0, cardY + cardHeight + 20),
             Size = new Size(screen.Width, 30)
         };
         Controls.Add(_statusLabel);
@@ -336,7 +392,7 @@ public sealed class KioskForm : Form
         _resultPanel = new Panel
         {
             Location = new Point(cardX, cardY),
-            Size = new Size(cardWidth, 360),
+            Size = new Size(cardWidth, cardHeight),
             BackColor = CardBg,
             Visible = false
         };
@@ -368,13 +424,13 @@ public sealed class KioskForm : Form
         closeBtn.Click += (_, _) => ResetForm();
         _resultPanel.Controls.Add(closeBtn);
 
-        // ── 已有用户面板（初始隐藏）──
-        var usersPanelY = cardY + 380 + 40;
+        // ── 已有用户面板（初始隐藏，含登录按钮）──
+        var usersPanelY = cardY + cardHeight + 60;
         var usersPanelWidth = cardWidth;
         _usersPanel = new Panel
         {
             Location = new Point(cardX, usersPanelY),
-            Size = new Size(usersPanelWidth, 200),
+            Size = new Size(usersPanelWidth, 240),
             BackColor = CardBg,
             Visible = false
         };
@@ -382,7 +438,7 @@ public sealed class KioskForm : Form
 
         var usersTitle = new Label
         {
-            Text = "已有工作站账户",
+            Text = "已有工作站账户（选中后点击下方登录）",
             ForeColor = MutedText,
             Font = new Font("Microsoft YaHei UI", 10F),
             Location = new Point(15, 10),
@@ -390,16 +446,36 @@ public sealed class KioskForm : Form
         };
         _usersPanel.Controls.Add(usersTitle);
 
+        // 登录选中账户按钮（先创建，后续 _usersList 事件 lambda 中引用才安全）
+        _loginSelectedBtn = new Button
+        {
+            Text = "登录选中账户",
+            Location = new Point(15, 190),
+            Size = new Size(usersPanelWidth - 30, 40),
+            BackColor = Accent,
+            ForeColor = BgColor,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            Enabled = false
+        };
+        _loginSelectedBtn.FlatAppearance.BorderSize = 0;
+        _loginSelectedBtn.Click += (_, _) => LoginSelectedUser();
+        _usersPanel.Controls.Add(_loginSelectedBtn);
+
         _usersList = new ListBox
         {
             Location = new Point(15, 35),
-            Size = new Size(usersPanelWidth - 30, 150),
+            Size = new Size(usersPanelWidth - 30, 145),
             Font = new Font("Microsoft YaHei UI", 11F),
             BackColor = BgColor,
             ForeColor = TextColor,
             BorderStyle = BorderStyle.None,
             ScrollAlwaysVisible = true
         };
+        _usersList.SelectedIndexChanged += (_, _) => _loginSelectedBtn.Enabled = _usersList.SelectedIndex >= 0
+            && _usersList.SelectedIndex < _usernames.Count;
+        _usersList.DoubleClick += (_, _) => LoginSelectedUser();
         _usersPanel.Controls.Add(_usersList);
 
         // ── 底部系统按钮栏 ──
@@ -429,9 +505,10 @@ public sealed class KioskForm : Form
         _toggleUsersBtn.Click += (_, _) => ToggleUsersPanel();
         bottomBar.Controls.Add(_toggleUsersBtn);
 
-        // 右侧按钮组
-        var rightBtns = new[] { ("登录已有账户", (EventHandler)((_, _) => SwitchUser())),
-                                 ("重启", (EventHandler)((_, _) => Restart())),
+        // 右侧按钮组：重启 | 关机
+        // 注：Kiosk 配置了开机自动登录，注销后会立即重新登录 kiosk，故不提供注销按钮。
+        // 切换账户请通过"查看已有用户"→选中账户→"登录选中账户"（RDP）。
+        var rightBtns = new[] { ("重启", (EventHandler)((_, _) => Restart())),
                                  ("关机", (EventHandler)((_, _) => Shutdown())) };
         var rightX = screen.Width - 30;
         var btnWidth = 130;
@@ -463,6 +540,17 @@ public sealed class KioskForm : Form
         {
             if (e.Alt && e.KeyCode != Keys.F4) e.Handled = true;
         };
+
+        // 启动后台心跳检查（首次立即检查，之后每 10 秒一次）
+        // 放在构造函数末尾：此时 _advisorCombo/_submitBtn 等所有控件均已创建，
+        // CheckHeartbeat → UpdateMonitorStatusUi 访问这些控件才安全。
+        Program.WriteDebugLog("[FORM] 启动心跳检查");
+        CheckHeartbeat();
+        _heartbeatTimer = new System.Windows.Forms.Timer { Interval = HeartbeatCheckIntervalSeconds * 1000 };
+        _heartbeatTimer.Tick += (_, _) => CheckHeartbeat();
+        _heartbeatTimer.Start();
+
+        Program.WriteDebugLog("[FORM] KioskForm 构造完成，UI 已就绪");
     }
 
     /// <summary>
@@ -474,21 +562,24 @@ public sealed class KioskForm : Form
     {
         try
         {
-            var advisors = GroupManager.GetAllAdvisorGroups();
+            // 过滤空字符串与空白项，避免出现可选的"空"导师组
+            var advisors = GroupManager.GetAllAdvisorGroups()
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .OrderBy(n => n)
+                .ToList();
             _advisorCombo.Items.Clear();
             foreach (var name in advisors)
                 _advisorCombo.Items.Add(name);
             if (_advisorCombo.Items.Count > 0)
             {
                 _advisorCombo.SelectedIndex = 0;
-                _submitBtn.Enabled = true;
+                _advisorCombo.Enabled = true;
             }
             else
             {
                 _advisorCombo.Items.Add("（尚无导师组，请联系管理员）");
                 _advisorCombo.SelectedIndex = 0;
                 _advisorCombo.Enabled = false;
-                _submitBtn.Enabled = false;
             }
         }
         catch
@@ -497,8 +588,51 @@ public sealed class KioskForm : Form
             _advisorCombo.Items.Add("（读取导师组失败，请联系管理员）");
             _advisorCombo.SelectedIndex = 0;
             _advisorCombo.Enabled = false;
-            _submitBtn.Enabled = false;
         }
+        // 提交按钮的最终启用状态由 UpdateSubmitButton 统一判定
+        UpdateSubmitButton();
+    }
+
+    /// <summary>
+    /// 根据当前表单状态（Monitor 在线 + 导师组有效 + 未在处理中）统一判定提交按钮启用状态。
+    /// 在 LoadAdvisors、SelectedIndexChanged、CheckHeartbeat 后调用。
+    /// </summary>
+    private void UpdateSubmitButton()
+    {
+        if (_pendingRequestId != null)
+        {
+            _submitBtn.Enabled = false;
+            return;
+        }
+        if (!_monitorOnline)
+        {
+            _submitBtn.Enabled = false;
+            return;
+        }
+        var advisor = _advisorCombo.SelectedItem?.ToString() ?? "";
+        _submitBtn.Enabled = !string.IsNullOrEmpty(advisor) && !advisor.StartsWith("（");
+    }
+
+    /// <summary>
+    /// 校验密码复杂度：必须同时包含大写字母、小写字母、数字、符号四类。
+    /// 满足 Windows 默认密码策略（要求至少 3 类，这里 4 类全包更稳妥）。
+    /// 返回 null 表示通过，否则返回错误描述。
+    /// </summary>
+    private static string? ValidatePasswordComplexity(string password)
+    {
+        bool hasUpper = false, hasLower = false, hasDigit = false, hasSymbol = false;
+        foreach (var c in password)
+        {
+            if (char.IsUpper(c)) hasUpper = true;
+            else if (char.IsLower(c)) hasLower = true;
+            else if (char.IsDigit(c)) hasDigit = true;
+            else if (!char.IsWhiteSpace(c)) hasSymbol = true;
+        }
+        if (!hasUpper) return "密码必须包含大写字母";
+        if (!hasLower) return "密码必须包含小写字母";
+        if (!hasDigit) return "密码必须包含数字";
+        if (!hasSymbol) return "密码必须包含符号（如 !@#$%）";
+        return null;
     }
 
     /// <summary>提交开户请求到队列。</summary>
@@ -507,12 +641,14 @@ public sealed class KioskForm : Form
         // 前置检查：Monitor 必须在线，否则请求无人处理
         if (!_monitorOnline)
         {
-            ShowStatus("监控服务离线，无法创建账户，请联系管理员", DangerColor);
+            ShowStatus("自助开户服务离线，无法创建账户，请联系管理员", DangerColor);
             return;
         }
 
         var username = _usernameBox.Text.Trim();
         var displayName = _displayNameBox.Text.Trim();
+        var password = _passwordBox.Text;
+        var passwordConfirm = _passwordConfirmBox.Text;
         var advisorName = _advisorCombo.SelectedItem?.ToString() ?? "";
 
         // 验证
@@ -532,6 +668,25 @@ public sealed class KioskForm : Form
             ShowStatus("用户名只能包含英文字母和数字", DangerColor);
             return;
         }
+        // 密码长度校验
+        if (password.Length < 8)
+        {
+            ShowStatus("密码至少需要 8 位", DangerColor);
+            return;
+        }
+        // 密码复杂度校验：必须同时包含大写、小写、数字、符号
+        var pwdError = ValidatePasswordComplexity(password);
+        if (pwdError != null)
+        {
+            ShowStatus(pwdError, DangerColor);
+            return;
+        }
+        // 两次密码必须一致
+        if (password != passwordConfirm)
+        {
+            ShowStatus("两次输入的密码不一致", DangerColor);
+            return;
+        }
         // 导师组为空或占位符时拒绝提交
         if (string.IsNullOrEmpty(advisorName) || advisorName.StartsWith("（"))
         {
@@ -539,7 +694,7 @@ public sealed class KioskForm : Form
             return;
         }
 
-        // 创建请求
+        // 创建请求（密码由用户自设，明文经队列文件传递给 Monitor）
         var request = new KioskRequest
         {
             RequestId = Guid.NewGuid().ToString("N")[..12],
@@ -547,6 +702,7 @@ public sealed class KioskForm : Form
             Username = username,
             DisplayName = displayName,
             AdvisorName = advisorName,
+            Password = password,
             Timestamp = DateTime.Now
         };
 
@@ -591,7 +747,7 @@ public sealed class KioskForm : Form
             _pollTimer = null;
             _pendingRequestId = null;
             _submitBtn.Enabled = true;
-            ShowStatus("创建超时：监控服务可能未运行，请联系管理员检查后重试", DangerColor);
+            ShowStatus("创建超时：自助开户服务可能未运行，请联系管理员检查后重试", DangerColor);
             return;
         }
 
@@ -624,24 +780,34 @@ public sealed class KioskForm : Form
     /// <summary>显示创建结果。</summary>
     private void ShowResult(KioskResponse resp)
     {
-        _statusLabel.Text = "";
-
         if (resp.Success)
         {
             _resultLabel.Text = $"✓ 账户创建成功！\n\n" +
-                $"初始密码：{resp.Password}\n\n" +
-                $"请记下你的密码。\n" +
-                $"点击下方「登录已有账户」即可使用此账户登录。\n" +
-                $"登录后请尽快修改密码。";
+                $"用户名：{_usernameBox.Text.Trim()}\n" +
+                $"密码：你刚才设置的密码\n\n" +
+                $"点击下方「完成」后可在用户列表中选中并登录。\n" +
+                $"请牢记你设置的密码。";
             _resultLabel.ForeColor = SuccessColor;
+            _statusLabel.Text = "✓ 账户创建成功！请查看上方信息";
+            _statusLabel.ForeColor = SuccessColor;
+
+            // 创建成功后自动刷新用户列表（如果面板可见）
+            if (_usersPanelVisible)
+            {
+                LoadExistingUsers();
+            }
         }
         else
         {
             _resultLabel.Text = $"✗ 创建失败\n\n{resp.Message}";
             _resultLabel.ForeColor = DangerColor;
+            _statusLabel.Text = "✗ 创建失败，请查看上方信息";
+            _statusLabel.ForeColor = DangerColor;
         }
 
+        // BringToFront 确保结果面板在 card 之上，避免被遮挡
         _resultPanel.Visible = true;
+        _resultPanel.BringToFront();
     }
 
     /// <summary>重置表单回到初始状态。</summary>
@@ -650,9 +816,16 @@ public sealed class KioskForm : Form
         _resultPanel.Visible = false;
         _usernameBox.Text = "";
         _displayNameBox.Text = "";
-        _submitBtn.Enabled = true;
+        _passwordBox.Text = "";
+        _passwordConfirmBox.Text = "";
         _statusLabel.Text = "";
-        LoadAdvisors();
+        LoadAdvisors(); // LoadAdvisors 末尾会调用 UpdateSubmitButton 统一判定按钮状态
+
+        // 重置后自动刷新用户列表（如果面板可见），确保显示最新账户
+        if (_usersPanelVisible)
+        {
+            LoadExistingUsers();
+        }
     }
 
     // ── 已有用户面板 ──────────────────────────────────────
@@ -674,14 +847,17 @@ public sealed class KioskForm : Form
     }
 
     /// <summary>
-    /// 加载已有用户列表到 ListBox。
+    /// 加载已有用户列表到 ListBox，同步填充 _usernames 列表。
     /// 通过 GroupManager.GetMembers(Lab_All) 枚举实验室用户（普通用户可读取组成员），
-    /// 逐个查询显示名与导师组信息。
+    /// 逐个查询显示名与导师组信息。_usernames 与 _usersList 显示项一一对应，
+    /// 选中后可通过索引取出真实用户名供 RDP 登录使用。
     /// </summary>
     private void LoadExistingUsers()
     {
         _usersList.Items.Clear();
+        _usernames = new List<string>();
         _usersList.Items.Add("正在加载...");
+        _loginSelectedBtn.Enabled = false;
 
         try
         {
@@ -705,11 +881,13 @@ public sealed class KioskForm : Form
                         ? $"{username}  （{displayName}）"
                         : $"{username}  （{displayName}，{advisor}）");
                 _usersList.Items.Add(display);
+                _usernames.Add(username); // 与显示项一一对应
             }
         }
         catch (Exception ex)
         {
             _usersList.Items.Clear();
+            _usernames = new List<string>();
             _usersList.Items.Add($"加载失败: {ex.Message}");
         }
     }
@@ -717,13 +895,19 @@ public sealed class KioskForm : Form
     // ── 系统操作 ──────────────────────────────────────────
 
     /// <summary>
-    /// 启动远程桌面连接到 127.0.0.1，让已有账户通过 RDP 登录。
-    /// kiosk 账户使用自定义 Shell 自动登录，无法直接注销切换用户
-    /// （注销后会自动重新登录 kiosk）。通过 RDP 让其他用户登录，
+    /// 登录用户列表中选中的账户：启动 mstsc 连接到 127.0.0.1，
+    /// 并提示用户在 RDP 窗口中输入该账户的密码。
     /// kiosk 控制台会话保持运行，RDP 窗口关闭后自动回到开户界面。
     /// </summary>
-    private void SwitchUser()
+    private void LoginSelectedUser()
     {
+        var idx = _usersList.SelectedIndex;
+        if (idx < 0 || idx >= _usernames.Count)
+        {
+            ShowStatus("请先在列表中选择一个账户", DangerColor);
+            return;
+        }
+        var username = _usernames[idx];
         try
         {
             var psi = new ProcessStartInfo
@@ -734,6 +918,7 @@ public sealed class KioskForm : Form
                 WindowStyle = ProcessWindowStyle.Normal
             };
             Process.Start(psi);
+            ShowStatus($"已启动远程桌面，请在 RDP 窗口中以 [{username}] 身份登录", SuccessColor);
         }
         catch (Exception ex)
         {
@@ -832,26 +1017,16 @@ public sealed class KioskForm : Form
     {
         if (_monitorOnline)
         {
-            _monitorStatusLabel.Text = "● 监控服务在线";
+            _monitorStatusLabel.Text = "● 自助开户服务在线";
             _monitorStatusLabel.ForeColor = SuccessColor;
         }
         else
         {
-            _monitorStatusLabel.Text = "● 监控服务离线，请联系管理员";
+            _monitorStatusLabel.Text = "● 自助开户服务离线，请联系管理员";
             _monitorStatusLabel.ForeColor = DangerColor;
         }
-
-        // 提交按钮在 Monitor 离线时禁用（已在处理中的请求不受影响）
-        if (!_monitorOnline && _pendingRequestId == null)
-        {
-            _submitBtn.Enabled = false;
-        }
-        else if (_monitorOnline && _pendingRequestId == null)
-        {
-            // 恢复时需重新校验导师组是否可选
-            var advisor = _advisorCombo.SelectedItem?.ToString() ?? "";
-            _submitBtn.Enabled = !string.IsNullOrEmpty(advisor) && !advisor.StartsWith("（");
-        }
+        // 提交按钮启用状态统一交给 UpdateSubmitButton 判定
+        UpdateSubmitButton();
     }
 
     // ── 公告加载与展示 ───────────────────────────────────

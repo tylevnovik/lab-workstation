@@ -65,6 +65,22 @@ public static class MonitorDeployer
                 workingDir: targetDir,
                 description: "课题组工作站 · 资源监控守护程序（CPU/内存/GPU/磁盘）",
                 runAsSystem: true);
+
+            // 补设进程崩溃自动重启策略：schtasks /create 不支持 RestartInterval，
+            // 必须用 Task Scheduler COM API 设置。
+            // 设置间隔 1 分钟、上限 999 次，保证 Monitor 进程崩溃后能自动恢复。
+            // CreateStartupTask 已重新启用任务（先 delete 再 create），此处仅需补设策略。
+            try
+            {
+                TaskSchedulerHelper.SetRestartPolicy(TaskName, intervalMin: 1, count: 999);
+                Console.WriteLine("[MonitorDeployer] 已设置进程崩溃自动重启策略（1分钟/999次）");
+            }
+            catch (Exception exPolicy)
+            {
+                // 设置重启策略失败不阻断部署：任务仍可正常启动，只是崩溃后不会自动恢复
+                Console.WriteLine($"[MonitorDeployer] 设置重启策略失败（不阻断，仅影响崩溃恢复）: {exPolicy.Message}");
+            }
+
             TaskSchedulerHelper.StartTask(TaskName);
             Console.WriteLine("[MonitorDeployer] 计划任务已注册并启动");
         }
@@ -196,12 +212,26 @@ public static class MonitorDeployer
     }
 
     /// <summary>
-    /// 强制停止正在运行的 Monitor：先停止计划任务实例，再杀掉命令行包含
-    /// LabWorkstation.Monitor.dll 的 dotnet 进程。两步均失败不抛异常。
+    /// 强制停止正在运行的 Monitor，确保后续文件替换不被占用、也不被任务自动重启打断。
+    /// 顺序：① 禁用计划任务（防止杀进程后 1 分钟内自动重启抢占 dll 句柄）
+    ///      ② 停止计划任务运行实例 ③ 杀掉加载 Monitor.dll 的 dotnet 进程。
+    /// 三步均失败不抛异常（任务可能尚未注册/进程可能未运行）。
+    /// 注意：禁用后必须由调用方在部署完成后重新注册任务（CreateStartupTask 会自动重新启用）。
     /// </summary>
     private static void StopRunningMonitor()
     {
-        // 1. 停止计划任务运行实例
+        // 1. 先禁用任务触发器：防止杀进程后重启策略在文件替换中途自动拉起任务
+        try
+        {
+            TaskSchedulerHelper.DisableTask(TaskName);
+            Console.WriteLine("[MonitorDeployer] 已禁用计划任务触发器（防止杀进程后自动重启）");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MonitorDeployer] 禁用计划任务失败（可忽略，可能未注册）: {ex.Message}");
+        }
+
+        // 2. 停止计划任务运行实例
         try
         {
             TaskSchedulerHelper.StopTask(TaskName);
@@ -212,7 +242,7 @@ public static class MonitorDeployer
             Console.WriteLine($"[MonitorDeployer] 停止计划任务失败（可忽略）: {ex.Message}");
         }
 
-        // 2. 杀掉运行 Monitor.dll 的 dotnet 进程
+        // 3. 杀掉运行 Monitor.dll 的 dotnet 进程
         //    用 taskkill /T /F 配合模块过滤器，杀掉加载了 LabWorkstation.Monitor.dll 的进程及其子进程
         try
         {

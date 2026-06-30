@@ -110,6 +110,106 @@ public static class TaskSchedulerHelper
         RunSchtasks($"/end /tn \"{QuoteName(taskName)}\"");
     }
 
+    /// <summary>
+    /// 禁用计划任务。schtasks /change /disable 仅阻止触发器激活，
+    /// 不会停止已在运行的实例（如需停止请先调用 StopTask）。
+    /// 用于部署流程中"防止杀进程后任务自动重启"：先 Disable → Stop → Kill → 替换文件。
+    /// 任务不存在时静默忽略。
+    /// </summary>
+    public static void DisableTask(string taskName)
+    {
+        if (LabConfig.TestMode)
+        {
+            Console.WriteLine($"[测试模式] 跳过禁用计划任务: {taskName}");
+            return;
+        }
+        RunSchtasks($"/change /tn \"{QuoteName(taskName)}\" /disable");
+    }
+
+    /// <summary>
+    /// 启用计划任务（撤销 DisableTask）。任务不存在时静默忽略。
+    /// </summary>
+    public static void EnableTask(string taskName)
+    {
+        if (LabConfig.TestMode)
+        {
+            Console.WriteLine($"[测试模式] 跳过启用计划任务: {taskName}");
+            return;
+        }
+        RunSchtasks($"/change /tn \"{QuoteName(taskName)}\" /enable");
+    }
+
+    /// <summary>
+    /// 为已存在的计划任务补设"进程退出后自动重启"策略。
+    /// schtasks.exe 不支持设置 RestartInterval/RestartCount，必须通过 Task Scheduler COM API。
+    /// 用于守护进程任务：进程崩溃后 1 分钟自动重启，最多 999 次（实际等于无限）。
+    /// 同时取消单次执行时长限制（ExecutionTimeLimit=PT0S），保证守护进程可常驻。
+    /// </summary>
+    /// <param name="taskName">任务名。</param>
+    /// <param name="intervalMin">重启间隔（分钟），默认 1。</param>
+    /// <param name="count">重启次数上限，默认 999。</param>
+    /// <remarks>
+    /// 调用前提：任务已通过 CreateStartupTask 创建。本方法读取现有任务定义，
+    /// 仅修改 Settings.RestartInterval / RestartCount / ExecutionTimeLimit，
+    /// 其他字段（触发器/动作/身份）保持不变，以 SYSTEM 身份重新注册（TASK_CREATE_OR_UPDATE=6）。
+    /// </remarks>
+    public static void SetRestartPolicy(string taskName, int intervalMin = 1, int count = 999)
+    {
+        if (LabConfig.TestMode)
+        {
+            Console.WriteLine($"[测试模式] 跳过设置重启策略: {taskName}");
+            return;
+        }
+
+        // 用 PowerShell 调用 Task Scheduler COM API
+        // RestartInterval/Count 用 ISO 8601 持续时间格式：PT1M = 1 分钟
+        var intervalIso = $"PT{intervalMin}M";
+        // 用单引号字符串避免 PowerShell 变量插值；任务名插入时已确保不含单引号
+        var psScript = "$ErrorActionPreference = 'Stop'\n" +
+            "try {\n" +
+            "    $ts = New-Object -ComObject Schedule.Service\n" +
+            "    $ts.Connect()\n" +
+            "    $folder = $ts.GetFolder('\\')\n" +
+            $"    $task = $folder.GetTask('{taskName}')\n" +
+            "    $def = $task.Definition\n" +
+            $"    $def.Settings.RestartInterval = '{intervalIso}'\n" +
+            $"    $def.Settings.RestartCount = {count}\n" +
+            "    $def.Settings.ExecutionTimeLimit = 'PT0S'\n" +
+            "    # TASK_CREATE_OR_UPDATE=6, SYSTEM 账户登录类型=5（无需密码）\n" +
+            $"    $folder.RegisterTaskDefinition('{taskName}', $def, 6, 'SYSTEM', $null, 5) | Out-Null\n" +
+            "    Write-Output 'OK'\n" +
+            "} catch {\n" +
+            "    Write-Output ('ERR:' + $_.Exception.Message)\n" +
+            "    exit 1\n" +
+            "}\n";
+
+        // 用 -EncodedCommand 传递 Base64(UTF16LE) 脚本，彻底避免引号/特殊字符转义问题
+        var encoded = Convert.ToBase64String(global::System.Text.Encoding.Unicode.GetBytes(psScript));
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var p = Process.Start(psi);
+        p?.WaitForExit(15000);
+        var output = p?.StandardOutput.ReadToEnd()?.Trim() ?? "";
+
+        if (p?.ExitCode != 0 || !output.Equals("OK", StringComparison.OrdinalIgnoreCase))
+        {
+            var err = p?.StandardError.ReadToEnd()?.Trim() ?? output;
+            throw new LabOperationException("SET_RESTART_POLICY", taskName,
+                detail: $"interval={intervalIso}, count={count}, output={output}, err={err}",
+                message: $"设置任务重启策略失败: {err}");
+        }
+
+        Console.WriteLine($"[TaskSchedulerHelper] 任务 '{taskName}' 重启策略已设置: 间隔={intervalMin}分钟, 次数={count}");
+    }
+
     /// <summary>查询计划任务是否存在。</summary>
     private static bool TaskExists(string taskName)
     {

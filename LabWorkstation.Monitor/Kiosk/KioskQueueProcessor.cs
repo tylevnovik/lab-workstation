@@ -187,18 +187,16 @@ public sealed class KioskQueueProcessor
     }
 
     /// <summary>
-    /// 处理 CreateAccount 请求：生成随机密码 → 调用 LabAccountService.CreateLabUser 创建账户。
+    /// 处理 CreateAccount 请求：使用用户在 Kiosk 端自行设置的密码创建账户。
+    /// 密码复杂度校验在 Kiosk 端完成（SubmitRequest），此处不再生成随机密码。
     /// 创建失败时抛出异常，由调用方捕获并生成失败响应。
     /// </summary>
     private static KioskResponse HandleCreateAccount(KioskRequest request)
     {
-        // 生成 12 位随机密码
-        var password = LabAccountService.GenerateRandomPassword(12);
-
         // 调用账户服务创建用户（失败时抛 LabOperationException）
         LabAccountService.CreateLabUser(
             request.Username,
-            password,
+            request.Password,
             request.DisplayName,
             request.AdvisorName);
 
@@ -207,7 +205,7 @@ public sealed class KioskQueueProcessor
             RequestId = request.RequestId,
             Success = true,
             Message = "账户创建成功",
-            Password = password
+            Password = null // 用户自设密码，不再回传
         };
     }
 
